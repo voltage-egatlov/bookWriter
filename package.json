@@ -1,0 +1,18 @@
+{
+  "name": "bookwriter-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev:web": "pnpm --filter web dev",
+    "dev:desktop": "pnpm --filter desktop tauri dev",
+    "build:web": "pnpm --filter web build",
+    "build:desktop": "pnpm --filter desktop tauri build",
+    "build:all": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0"
+  },
+  "packageManager": "pnpm@8.15.0"
+}
