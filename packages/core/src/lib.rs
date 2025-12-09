@@ -3,6 +3,9 @@ pub mod models;
 pub mod services;
 pub mod utils;
 
+#[cfg(feature = "wasm")]
+pub mod wasm;
+
 pub use models::*;
 
 #[cfg(test)]
