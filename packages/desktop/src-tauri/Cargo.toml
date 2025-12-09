@@ -12,7 +12,7 @@ tauri-build = { version = "1.5", features = [] }
 bookwriter-core = { path = "../../core" }
 serde.workspace = true
 serde_json.workspace = true
-tauri = { version = "1.5", features = ["shell-open"] }
+tauri = { version = "1.5", features = ["shell-open", "dialog-open", "dialog-save", "fs-read-file", "fs-write-file"] }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

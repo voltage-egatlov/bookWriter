@@ -1,67 +1,53 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use bookwriter_core::{Book, BookService};
-use std::collections::HashMap;
-use std::sync::Mutex;
-use tauri::State;
-use uuid::Uuid;
+use bookwriter_core::{bk_format::BkParser, Book};
+use std::path::Path;
 
-struct AppState {
-    books: Mutex<HashMap<Uuid, Book>>,
-}
+#[tauri::command]
+async fn open_file_dialog() -> Result<Option<String>, String> {
+    use tauri::api::dialog::blocking::FileDialogBuilder;
 
-impl BookService for AppState {
-    fn create_book(&mut self, title: String, author: String) -> anyhow::Result<Book> {
-        let book = Book::new(title, author);
-        let id = book.id;
-        self.books.lock().unwrap().insert(id, book.clone());
-        Ok(book)
-    }
+    let path = FileDialogBuilder::new()
+        .add_filter("Book Files", &["bk"])
+        .add_filter("All Files", &["*"])
+        .pick_file();
 
-    fn get_book(&self, id: &Uuid) -> anyhow::Result<Option<Book>> {
-        Ok(self.books.lock().unwrap().get(id).cloned())
-    }
-
-    fn list_books(&self) -> anyhow::Result<Vec<Book>> {
-        Ok(self.books.lock().unwrap().values().cloned().collect())
-    }
-
-    fn update_book(&mut self, book: Book) -> anyhow::Result<()> {
-        self.books.lock().unwrap().insert(book.id, book);
-        Ok(())
-    }
-
-    fn delete_book(&mut self, id: &Uuid) -> anyhow::Result<()> {
-        self.books.lock().unwrap().remove(id);
-        Ok(())
-    }
+    Ok(path.map(|p| p.to_string_lossy().to_string()))
 }
 
 #[tauri::command]
-fn create_book(title: String, author: String, state: State<AppState>) -> Result<Book, String> {
-    let book = Book::new(title, author);
-    let id = book.id;
-    state.books.lock().unwrap().insert(id, book.clone());
+async fn save_file_dialog(default_name: String) -> Result<Option<String>, String> {
+    use tauri::api::dialog::blocking::FileDialogBuilder;
+
+    let path = FileDialogBuilder::new()
+        .add_filter("Book Files", &["bk"])
+        .set_file_name(&default_name)
+        .save_file();
+
+    Ok(path.map(|p| p.to_string_lossy().to_string()))
+}
+
+#[tauri::command]
+async fn load_bk_file(path: String) -> Result<Book, String> {
+    let book = BkParser::parse_file(Path::new(&path))
+        .map_err(|e| format!("Parse error: {}\n\nHelp: {}", e, e.help_message()))?;
     Ok(book)
 }
 
 #[tauri::command]
-fn list_books(state: State<AppState>) -> Result<Vec<Book>, String> {
-    Ok(state.books.lock().unwrap().values().cloned().collect())
-}
-
-#[tauri::command]
-fn get_book(id: String, state: State<AppState>) -> Result<Option<Book>, String> {
-    let uuid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
-    Ok(state.books.lock().unwrap().get(&uuid).cloned())
+async fn save_bk_file(path: String, content: String) -> Result<(), String> {
+    std::fs::write(&path, content).map_err(|e| format!("Failed to save file: {}", e))?;
+    Ok(())
 }
 
 fn main() {
     tauri::Builder::default()
-        .manage(AppState {
-            books: Mutex::new(HashMap::new()),
-        })
-        .invoke_handler(tauri::generate_handler![create_book, list_books, get_book])
+        .invoke_handler(tauri::generate_handler![
+            open_file_dialog,
+            save_file_dialog,
+            load_bk_file,
+            save_bk_file
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
