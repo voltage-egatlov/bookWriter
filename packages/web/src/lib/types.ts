@@ -1,17 +1,27 @@
-export interface Book {
+export type BlockType = 'Page'
+
+export interface Block {
   id: string
-  title: string
-  author: string
-  createdAt: string
-  updatedAt: string
-  chapters: Chapter[]
+  content: string
+  order: number
+  block_type: BlockType
 }
 
 export interface Chapter {
   id: string
   title: string
-  content: string
+  blocks: Block[]
   order: number
-  createdAt: string
-  updatedAt: string
+  created_at: string
+  updated_at: string
+}
+
+export interface Book {
+  id: string
+  title: string
+  author: string
+  dedication: string | null
+  created_at: string
+  updated_at: string
+  chapters: Chapter[]
 }
