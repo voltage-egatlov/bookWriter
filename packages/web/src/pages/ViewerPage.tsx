@@ -1,11 +1,12 @@
 import { FileUpload } from '@/components/FileUpload'
 import { BookView } from '@/components/BookView'
 import { BookProvider, useBook } from '@/contexts/BookContext'
+import { Book } from '@/lib/types'
 
 function ViewerPageContent() {
   const { book, setBook, isEditing, setIsEditing } = useBook()
 
-  const handleBookParsed = (parsedBook: any) => {
+  const handleBookParsed = (parsedBook: Book) => {
     setBook(parsedBook)
   }
 

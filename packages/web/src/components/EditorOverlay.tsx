@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 
 interface EditorOverlayProps {
   initialContent: string
@@ -18,6 +18,15 @@ export function EditorOverlay({ initialContent, onSave, onCancel, title }: Edito
     textareaRef.current?.select()
   }, [])
 
+  const handleSave = useCallback(async () => {
+    setIsSaving(true)
+    try {
+      await onSave(content)
+    } finally {
+      setIsSaving(false)
+    }
+  }, [content, onSave])
+
   // Handle escape key to cancel
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -32,16 +41,7 @@ export function EditorOverlay({ initialContent, onSave, onCancel, title }: Edito
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [content])
-
-  const handleSave = async () => {
-    setIsSaving(true)
-    try {
-      await onSave(content)
-    } finally {
-      setIsSaving(false)
-    }
-  }
+  }, [content, onCancel, handleSave])
 
   return (
     <div
@@ -88,9 +88,7 @@ export function EditorOverlay({ initialContent, onSave, onCancel, title }: Edito
             alignItems: 'center',
           }}
         >
-          <h2 style={{ margin: 0, fontSize: '20px', color: '#333' }}>
-            {title || 'Edit Block'}
-          </h2>
+          <h2 style={{ margin: 0, fontSize: '20px', color: '#333' }}>{title || 'Edit Block'}</h2>
           <button
             onClick={onCancel}
             style={{

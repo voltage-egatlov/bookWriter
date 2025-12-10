@@ -28,21 +28,21 @@ export function BookProvider({ children }: { children: React.ReactNode }) {
     const lines: string[] = []
 
     // Metadata
-    lines.push(`@title ${book.title}`)
-    lines.push(`@author ${book.author}`)
-    lines.push(`@id ${book.id}`)
+    lines.push(`@title: ${book.title}`)
+    lines.push(`@author: ${book.author}`)
+    lines.push(`@id: ${book.id}`)
     if (book.dedication) {
-      lines.push(`@dedication ${book.dedication}`)
+      lines.push(`@dedication: ${book.dedication}`)
     }
     lines.push('')
 
     // Chapters
     for (const chapter of book.chapters) {
-      lines.push(`#chapter ${chapter.title}`)
+      lines.push(`#chapter: ${chapter.title}`)
       lines.push('')
 
       for (const block of chapter.blocks) {
-        lines.push('@page')
+        lines.push('@page:')
         lines.push(block.content)
         lines.push('')
       }
@@ -130,20 +130,20 @@ export function BookProvider({ children }: { children: React.ReactNode }) {
   const serializeBookObject = (bookObj: Book): string => {
     const lines: string[] = []
 
-    lines.push(`@title ${bookObj.title}`)
-    lines.push(`@author ${bookObj.author}`)
-    lines.push(`@id ${bookObj.id}`)
+    lines.push(`@title: ${bookObj.title}`)
+    lines.push(`@author: ${bookObj.author}`)
+    lines.push(`@id: ${bookObj.id}`)
     if (bookObj.dedication) {
-      lines.push(`@dedication ${bookObj.dedication}`)
+      lines.push(`@dedication: ${bookObj.dedication}`)
     }
     lines.push('')
 
     for (const chapter of bookObj.chapters) {
-      lines.push(`#chapter ${chapter.title}`)
+      lines.push(`#chapter: ${chapter.title}`)
       lines.push('')
 
       for (const block of chapter.blocks) {
-        lines.push('@page')
+        lines.push('@page:')
         lines.push(block.content)
         lines.push('')
       }
