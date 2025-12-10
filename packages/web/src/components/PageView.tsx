@@ -1,28 +1,41 @@
-import { Block } from '@/lib/types';
-import { useEffect } from 'react';
+import { Block } from '@/lib/types'
+import { useEffect } from 'react'
+import { EditableBlock } from './EditableBlock'
 
 interface PageViewProps {
-  block: Block;
-  chapterTitle: string;
-  onNavigate: (direction: 'prev' | 'next') => void;
-  hasPrev: boolean;
-  hasNext: boolean;
+  block: Block
+  chapterId: string
+  chapterTitle: string
+  onNavigate: (direction: 'prev' | 'next') => void
+  hasPrev: boolean
+  hasNext: boolean
+  isEditable?: boolean
+  onBlockEdit?: (chapterId: string, blockId: string, newContent: string) => Promise<void>
 }
 
-export function PageView({ block, chapterTitle, onNavigate, hasPrev, hasNext }: PageViewProps) {
+export function PageView({
+  block,
+  chapterId,
+  chapterTitle,
+  onNavigate,
+  hasPrev,
+  hasNext,
+  isEditable = false,
+  onBlockEdit,
+}: PageViewProps) {
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'ArrowLeft' && hasPrev) {
-        onNavigate('prev');
+        onNavigate('prev')
       } else if (e.key === 'ArrowRight' && hasNext) {
-        onNavigate('next');
+        onNavigate('next')
       }
-    };
+    }
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [hasPrev, hasNext, onNavigate]);
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [hasPrev, hasNext, onNavigate])
 
   return (
     <div
@@ -49,21 +62,34 @@ export function PageView({ block, chapterTitle, onNavigate, hasPrev, hasNext }: 
         }}
       >
         {/* Chapter Title */}
-        <h2 style={{ margin: '0 0 30px 0', fontSize: '24px', color: '#333' }}>
-          {chapterTitle}
-        </h2>
+        <h2 style={{ margin: '0 0 30px 0', fontSize: '24px', color: '#333' }}>{chapterTitle}</h2>
 
         {/* Page Content */}
-        <div
-          style={{
-            fontSize: '18px',
-            lineHeight: '1.8',
-            color: '#333',
-            whiteSpace: 'pre-wrap',
-          }}
-        >
-          {block.content}
-        </div>
+        {isEditable && onBlockEdit ? (
+          <EditableBlock
+            block={block}
+            chapterId={chapterId}
+            isEditable={isEditable}
+            onEdit={onBlockEdit}
+            style={{
+              fontSize: '18px',
+              lineHeight: '1.8',
+              color: '#333',
+              whiteSpace: 'pre-wrap',
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              fontSize: '18px',
+              lineHeight: '1.8',
+              color: '#333',
+              whiteSpace: 'pre-wrap',
+            }}
+          >
+            {block.content}
+          </div>
+        )}
 
         {/* Page Number */}
         <div
@@ -118,5 +144,5 @@ export function PageView({ block, chapterTitle, onNavigate, hasPrev, hasNext }: 
         </button>
       </div>
     </div>
-  );
+  )
 }
