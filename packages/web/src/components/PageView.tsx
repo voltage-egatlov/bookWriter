@@ -1,14 +1,17 @@
 import { Block } from '@/lib/types'
-import { useEffect } from 'react'
 import { EditableBlock } from './EditableBlock'
+import bookStyles from '@/styles/book-styles.module.css'
 
 interface PageViewProps {
   block: Block
   chapterId: string
   chapterTitle: string
-  onNavigate: (direction: 'prev' | 'next') => void
-  hasPrev: boolean
-  hasNext: boolean
+  position: 'left' | 'right'
+  isAnimating?: boolean
+  showNavigation?: boolean
+  onNavigate?: (direction: 'prev' | 'next') => void
+  hasPrev?: boolean
+  hasNext?: boolean
   isEditable?: boolean
   onBlockEdit?: (chapterId: string, blockId: string, newContent: string) => Promise<void>
 }
@@ -17,52 +20,26 @@ export function PageView({
   block,
   chapterId,
   chapterTitle,
-  onNavigate,
-  hasPrev,
-  hasNext,
+  position,
+  isAnimating = false,
   isEditable = false,
   onBlockEdit,
 }: PageViewProps) {
-  // Keyboard navigation
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft' && hasPrev) {
-        onNavigate('prev')
-      } else if (e.key === 'ArrowRight' && hasNext) {
-        onNavigate('next')
-      }
-    }
+  // Determine animation class based on position and state
+  const animationClass = isAnimating
+    ? position === 'left'
+      ? bookStyles.pageEnterLeft
+      : bookStyles.pageEnterRight
+    : ''
 
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [hasPrev, hasNext, onNavigate])
+  // Page styling based on position
+  const pageClass = position === 'left' ? bookStyles.pageLeft : bookStyles.pageRight
 
   return (
-    <div
-      style={{
-        flex: 1,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '40px',
-        background: '#fafafa',
-      }}
-    >
-      {/* Page Content */}
-      <div
-        style={{
-          maxWidth: '700px',
-          width: '100%',
-          background: 'white',
-          padding: '60px',
-          borderRadius: '8px',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-          minHeight: '500px',
-        }}
-      >
+    <div className={`${pageClass} ${animationClass} ${bookStyles.pageVignette}`}>
+      <div className={bookStyles.pageContent}>
         {/* Chapter Title */}
-        <h2 style={{ margin: '0 0 30px 0', fontSize: '24px', color: '#333' }}>{chapterTitle}</h2>
+        <h2 className={bookStyles.chapterTitle}>{chapterTitle}</h2>
 
         {/* Page Content */}
         {isEditable && onBlockEdit ? (
@@ -79,69 +56,11 @@ export function PageView({
             }}
           />
         ) : (
-          <div
-            style={{
-              fontSize: '18px',
-              lineHeight: '1.8',
-              color: '#333',
-              whiteSpace: 'pre-wrap',
-            }}
-          >
-            {block.content}
-          </div>
+          <div className={bookStyles.bodyText}>{block.content}</div>
         )}
 
         {/* Page Number */}
-        <div
-          style={{
-            marginTop: '40px',
-            textAlign: 'center',
-            fontSize: '14px',
-            color: '#999',
-          }}
-        >
-          Page {block.order + 1}
-        </div>
-      </div>
-
-      {/* Navigation Buttons */}
-      <div
-        style={{
-          display: 'flex',
-          gap: '20px',
-          marginTop: '30px',
-        }}
-      >
-        <button
-          onClick={() => onNavigate('prev')}
-          disabled={!hasPrev}
-          style={{
-            padding: '12px 24px',
-            fontSize: '16px',
-            background: hasPrev ? '#007bff' : '#ccc',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: hasPrev ? 'pointer' : 'not-allowed',
-          }}
-        >
-          ← Previous
-        </button>
-        <button
-          onClick={() => onNavigate('next')}
-          disabled={!hasNext}
-          style={{
-            padding: '12px 24px',
-            fontSize: '16px',
-            background: hasNext ? '#007bff' : '#ccc',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: hasNext ? 'pointer' : 'not-allowed',
-          }}
-        >
-          Next →
-        </button>
+        <div className={bookStyles.pageNumber}>Page {block.order + 1}</div>
       </div>
     </div>
   )
