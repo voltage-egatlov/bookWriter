@@ -29,8 +29,12 @@ export function BookView({ book, isEditable = false }: BookViewProps) {
   // Calculate total spreads (2 blocks per spread)
   const totalSpreads = Math.ceil(allBlocks.length / 2)
 
-  // Load last position from localStorage
+  // Load last position from localStorage and save book metadata
   useEffect(() => {
+    // Save book title and last opened timestamp
+    localStorage.setItem(`book-title-${book.id}`, book.title)
+    localStorage.setItem(`book-last-opened-${book.id}`, Date.now().toString())
+
     const savedPosition = localStorage.getItem(`book-position-${book.id}`)
     if (savedPosition) {
       try {
@@ -42,7 +46,7 @@ export function BookView({ book, isEditable = false }: BookViewProps) {
         console.error('Failed to load saved position:', e)
       }
     }
-  }, [book.id, totalSpreads])
+  }, [book.id, book.title, totalSpreads])
 
   // Save position to localStorage whenever it changes
   useEffect(() => {

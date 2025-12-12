@@ -1,3 +1,5 @@
+import { useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { FileUpload } from '@/components/FileUpload'
 import { BookView } from '@/components/BookView'
 import { BookProvider, useBook } from '@/contexts/BookContext'
@@ -5,9 +7,24 @@ import { Book } from '@/lib/types'
 
 function ViewerPageContent() {
   const { book, setBook, isEditing, setIsEditing } = useBook()
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    // Load book from localStorage if available
+    const currentBook = localStorage.getItem('current-book')
+    if (currentBook) {
+      try {
+        const parsedBook = JSON.parse(currentBook) as Book
+        setBook(parsedBook)
+      } catch (err) {
+        console.error('Failed to load book from localStorage:', err)
+      }
+    }
+  }, [setBook])
 
   const handleBookParsed = (parsedBook: Book) => {
     setBook(parsedBook)
+    localStorage.setItem('current-book', JSON.stringify(parsedBook))
   }
 
   if (!book) {
