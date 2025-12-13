@@ -83,7 +83,7 @@ impl BkParser {
                 || trimmed.starts_with("@dedication:")
             {
                 self.parse_metadata(trimmed)?;
-            } else if trimmed.starts_with("@page:") {
+            } else if trimmed.starts_with("@block:") {
                 self.parse_block_marker(trimmed)?;
             } else {
                 // Unknown @ directive, ignore or accumulate as content
@@ -182,7 +182,7 @@ impl BkParser {
         Ok(())
     }
 
-    /// Parse block marker (@page:)
+    /// Parse block marker (@block:)
     fn parse_block_marker(&mut self, _line: &str) -> Result<(), BkParseError> {
         if self.current_chapter.is_none() {
             return Err(BkParseError::BlockBeforeChapter {

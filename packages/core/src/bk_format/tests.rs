@@ -11,10 +11,10 @@ fn test_parse_complete_book() {
 @dedication: To my family...
 
 #chapter: Chapter One
-@page:
+@block:
 The morning sun cracked over the horizon...
 
-@page:
+@block:
 Another day began...
     "#;
 
@@ -40,7 +40,7 @@ fn test_parse_minimal_book() {
 @author: John Doe
 
 #chapter: Intro
-@page:
+@block:
 Once upon a time...
     "#;
 
@@ -59,7 +59,7 @@ fn test_parse_book_without_id() {
 @author: Author
 
 #chapter: Chapter 1
-@page:
+@block:
 Content here
     "#;
 
@@ -75,15 +75,15 @@ fn test_parse_multiple_chapters() {
 @author: Writer
 
 #chapter: First
-@page:
+@block:
 First content
 
 #chapter: Second
-@page:
+@block:
 Second content
 
 #chapter: Third
-@page:
+@block:
 Third content
     "#;
 
@@ -104,7 +104,7 @@ fn test_parse_multiline_content() {
 @author: Author
 
 #chapter: Chapter One
-@page:
+@block:
 Line 1
 Line 2
 Line 3
@@ -120,7 +120,7 @@ fn test_error_missing_title() {
 @author: Author
 
 #chapter: Chapter
-@page:
+@block:
 Content
     "#;
 
@@ -137,7 +137,7 @@ fn test_error_missing_author() {
 @title: My Book
 
 #chapter: Chapter
-@page:
+@block:
 Content
     "#;
 
@@ -156,7 +156,7 @@ fn test_error_invalid_uuid() {
 @id: not-a-valid-uuid
 
 #chapter: Chapter
-@page:
+@block:
 Content
     "#;
 
@@ -181,7 +181,7 @@ fn test_error_page_before_chapter() {
 @title: Book
 @author: Author
 
-@page:
+@block:
 Content before any chapter
     "#;
 
@@ -208,7 +208,7 @@ fn test_error_chapter_without_title() {
 @author: Author
 
 #chapter:
-@page:
+@block:
 Content
     "#;
 
@@ -227,7 +227,7 @@ fn test_error_duplicate_title() {
 @author: Author
 
 #chapter: Chapter
-@page:
+@block:
 Content
     "#;
 
@@ -246,7 +246,7 @@ fn test_deterministic_chapter_ids() {
 @id: 550e8400-e29b-41d4-a009-426655440000
 
 #chapter: Chapter One
-@page:
+@block:
 Content
     "#;
 
@@ -265,10 +265,10 @@ fn test_deterministic_block_ids() {
 @id: 550e8400-e29b-41d4-a009-426655440000
 
 #chapter: Chapter One
-@page:
+@block:
 First block
 
-@page:
+@block:
 Second block
     "#;
 
@@ -299,9 +299,9 @@ fn test_empty_blocks_ignored() {
 @author: Author
 
 #chapter: Chapter
-@page:
+@block:
 
-@page:
+@block:
 Content
     "#;
 
@@ -313,7 +313,7 @@ Content
 
 #[test]
 fn test_whitespace_handling() {
-    let content = "  @title:   Whitespace Book  \n  @author:  Author  \n\n#chapter:  My Chapter  \n@page:\n  Content with spaces  ";
+    let content = "  @title:   Whitespace Book  \n  @author:  Author  \n\n#chapter:  My Chapter  \n@block:\n  Content with spaces  ";
 
     let book = BkParser::parse_string(content, Utc::now(), Utc::now()).unwrap();
     assert_eq!(book.title, "Whitespace Book");
@@ -329,7 +329,7 @@ fn test_unicode_content() {
 @author: 作者
 
 #chapter: Chapitre Un
-@page:
+@block:
 Hello 世界! Привет мир! 🌍
     "#;
 
@@ -350,10 +350,10 @@ fn test_chapter_content_helper() {
 @author: Author
 
 #chapter: Chapter
-@page:
+@block:
 First page
 
-@page:
+@block:
 Second page
     "#;
 

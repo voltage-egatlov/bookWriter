@@ -102,10 +102,10 @@ export default function HomePage() {
 @dedication:
 
 #chapter: Chapter One
-@page:
+@block:
 Write your first page here...
 
-@page:
+@block:
 Continue your story...
 `
 

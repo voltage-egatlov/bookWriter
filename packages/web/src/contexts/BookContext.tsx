@@ -42,7 +42,7 @@ export function BookProvider({ children }: { children: React.ReactNode }) {
       lines.push('')
 
       for (const block of chapter.blocks) {
-        lines.push('@page:')
+        lines.push('@block:')
         lines.push(block.content)
         lines.push('')
       }
@@ -143,7 +143,7 @@ export function BookProvider({ children }: { children: React.ReactNode }) {
       lines.push('')
 
       for (const block of chapter.blocks) {
-        lines.push('@page:')
+        lines.push('@block:')
         lines.push(block.content)
         lines.push('')
       }

@@ -7,10 +7,10 @@ const DEFAULT_TEMPLATE = `@title: Untitled Book
 @dedication:
 
 #chapter: Chapter One
-@page:
+@block:
 Write your first page here...
 
-@page:
+@block:
 Continue your story...
 `
 

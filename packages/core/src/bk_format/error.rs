@@ -45,7 +45,7 @@ impl BkParseError {
                 "The @id field must be a valid UUID (e.g., 550e8400-e29b-41d4-a009-426655440000). You can omit @id to generate one automatically.".to_string()
             }
             Self::BlockBeforeChapter { .. } => {
-                "Move @page: blocks inside a #chapter: section".to_string()
+                "Move @block: blocks inside a #chapter: section".to_string()
             }
             Self::NoChapters => "Add at least one chapter using '#chapter: Chapter Title'".to_string(),
             Self::MalformedMetadata { reason, .. } => {
