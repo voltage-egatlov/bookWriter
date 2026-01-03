@@ -1,6 +1,6 @@
 use crate::bk_format::error::BkParseError;
 use crate::bk_format::models::{BkChapter, BkMetadata, ParserState};
-use crate::models::{generate_block_id, generate_chapter_id, Block, BlockType, Book, Chapter};
+use crate::models::{generate_chapter_id, Book, Chapter};
 use chrono::{DateTime, Utc};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -14,7 +14,6 @@ pub struct BkParser {
     metadata: BkMetadata,
     chapters: Vec<BkChapter>,
     current_chapter: Option<BkChapter>,
-    current_block: String,
 }
 
 impl BkParser {
@@ -26,7 +25,6 @@ impl BkParser {
             metadata: BkMetadata::default(),
             chapters: Vec::new(),
             current_chapter: None,
-            current_block: String::new(),
         }
     }
 
@@ -74,7 +72,7 @@ impl BkParser {
             return Ok(());
         }
 
-        // Handle metadata and block markers (both start with @)
+        // Handle metadata (starts with @)
         if trimmed.starts_with('@') {
             if self.state == ParserState::ReadingMetadata
                 || trimmed.starts_with("@title:")
@@ -83,10 +81,8 @@ impl BkParser {
                 || trimmed.starts_with("@dedication:")
             {
                 self.parse_metadata(trimmed)?;
-            } else if trimmed.starts_with("@block:") {
-                self.parse_block_marker(trimmed)?;
             } else {
-                // Unknown @ directive, ignore or accumulate as content
+                // Unknown @ directive, treat as content
                 self.accumulate_content(line);
             }
             return Ok(());
@@ -158,8 +154,7 @@ impl BkParser {
 
     /// Parse chapter header (#chapter: Title)
     fn parse_chapter_header(&mut self, line: &str) -> Result<(), BkParseError> {
-        // Finish current block and chapter if any
-        self.finish_current_block();
+        // Finish current chapter if any
         self.finish_current_chapter();
 
         let title = line
@@ -182,42 +177,21 @@ impl BkParser {
         Ok(())
     }
 
-    /// Parse block marker (@block:)
-    fn parse_block_marker(&mut self, _line: &str) -> Result<(), BkParseError> {
-        if self.current_chapter.is_none() {
-            return Err(BkParseError::BlockBeforeChapter {
-                line: self.line_number,
-            });
-        }
-
-        // Finish current block (if any)
-        self.finish_current_block();
-
-        self.state = ParserState::ReadingBlock;
-        Ok(())
-    }
-
-    /// Accumulate content into current block
+    /// Accumulate content into current chapter
     fn accumulate_content(&mut self, line: String) {
-        if !self.current_block.is_empty() {
-            self.current_block.push('\n');
-        }
-        self.current_block.push_str(&line);
-    }
-
-    /// Finish the current block and add it to the current chapter
-    fn finish_current_block(&mut self) {
-        if !self.current_block.is_empty() {
-            if let Some(chapter) = &mut self.current_chapter {
-                chapter.blocks.push(self.current_block.trim().to_string());
-                self.current_block.clear();
+        if let Some(chapter) = &mut self.current_chapter {
+            if !chapter.content.is_empty() {
+                chapter.content.push('\n');
             }
+            chapter.content.push_str(&line);
         }
     }
 
     /// Finish the current chapter and add it to chapters list
     fn finish_current_chapter(&mut self) {
-        if let Some(chapter) = self.current_chapter.take() {
+        if let Some(mut chapter) = self.current_chapter.take() {
+            // Trim the accumulated content
+            chapter.content = chapter.content.trim().to_string();
             self.chapters.push(chapter);
         }
     }
@@ -255,8 +229,7 @@ impl BkParser {
         created_at: DateTime<Utc>,
         updated_at: DateTime<Utc>,
     ) -> Result<Book, BkParseError> {
-        // Finish any pending block and chapter
-        self.finish_current_block();
+        // Finish any pending chapter
         self.finish_current_chapter();
 
         // Validate required metadata
@@ -283,22 +256,10 @@ impl BkParser {
             .map(|bk_chapter| {
                 let chapter_id = generate_chapter_id(&book_id, bk_chapter.order, &bk_chapter.title);
 
-                let blocks: Vec<Block> = bk_chapter
-                    .blocks
-                    .into_iter()
-                    .enumerate()
-                    .map(|(idx, content)| Block {
-                        id: generate_block_id(&chapter_id, idx),
-                        content,
-                        order: idx,
-                        block_type: BlockType::Page,
-                    })
-                    .collect();
-
                 Chapter {
                     id: chapter_id,
                     title: bk_chapter.title,
-                    blocks,
+                    content: bk_chapter.content,
                     order: bk_chapter.order,
                     created_at,
                     updated_at,

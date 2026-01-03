@@ -11,10 +11,8 @@ fn test_parse_complete_book() {
 @dedication: To my family...
 
 #chapter: Chapter One
-@block:
 The morning sun cracked over the horizon...
 
-@block:
 Another day began...
     "#;
 
@@ -25,12 +23,10 @@ Another day began...
     assert_eq!(book.id.to_string(), "550e8400-e29b-41d4-a009-426655440000");
     assert_eq!(book.chapters.len(), 1);
     assert_eq!(book.chapters[0].title, "Chapter One");
-    assert_eq!(book.chapters[0].blocks.len(), 2);
-    assert_eq!(
-        book.chapters[0].blocks[0].content,
-        "The morning sun cracked over the horizon..."
-    );
-    assert_eq!(book.chapters[0].blocks[1].content, "Another day began...");
+    assert!(book.chapters[0]
+        .content
+        .contains("The morning sun cracked over the horizon..."));
+    assert!(book.chapters[0].content.contains("Another day began..."));
 }
 
 #[test]
@@ -40,7 +36,6 @@ fn test_parse_minimal_book() {
 @author: John Doe
 
 #chapter: Intro
-@block:
 Once upon a time...
     "#;
 
@@ -49,7 +44,7 @@ Once upon a time...
     assert_eq!(book.author, "John Doe");
     assert_eq!(book.dedication, None);
     assert_eq!(book.chapters.len(), 1);
-    assert_eq!(book.chapters[0].blocks.len(), 1);
+    assert_eq!(book.chapters[0].content, "Once upon a time...");
 }
 
 #[test]
@@ -59,7 +54,6 @@ fn test_parse_book_without_id() {
 @author: Author
 
 #chapter: Chapter 1
-@block:
 Content here
     "#;
 
@@ -75,15 +69,12 @@ fn test_parse_multiple_chapters() {
 @author: Writer
 
 #chapter: First
-@block:
 First content
 
 #chapter: Second
-@block:
 Second content
 
 #chapter: Third
-@block:
 Third content
     "#;
 
@@ -95,6 +86,9 @@ Third content
     assert_eq!(book.chapters[0].order, 0);
     assert_eq!(book.chapters[1].order, 1);
     assert_eq!(book.chapters[2].order, 2);
+    assert_eq!(book.chapters[0].content, "First content");
+    assert_eq!(book.chapters[1].content, "Second content");
+    assert_eq!(book.chapters[2].content, "Third content");
 }
 
 #[test]
@@ -104,14 +98,13 @@ fn test_parse_multiline_content() {
 @author: Author
 
 #chapter: Chapter One
-@block:
 Line 1
 Line 2
 Line 3
     "#;
 
     let book = BkParser::parse_string(content, Utc::now(), Utc::now()).unwrap();
-    assert_eq!(book.chapters[0].blocks[0].content, "Line 1\nLine 2\nLine 3");
+    assert_eq!(book.chapters[0].content, "Line 1\nLine 2\nLine 3");
 }
 
 #[test]
@@ -120,7 +113,6 @@ fn test_error_missing_title() {
 @author: Author
 
 #chapter: Chapter
-@block:
 Content
     "#;
 
@@ -137,7 +129,6 @@ fn test_error_missing_author() {
 @title: My Book
 
 #chapter: Chapter
-@block:
 Content
     "#;
 
@@ -156,7 +147,6 @@ fn test_error_invalid_uuid() {
 @id: not-a-valid-uuid
 
 #chapter: Chapter
-@block:
 Content
     "#;
 
@@ -176,29 +166,23 @@ fn test_error_no_chapters() {
 }
 
 #[test]
-fn test_error_page_before_chapter() {
+fn test_error_content_before_chapter() {
     let content = r#"
 @title: Book
 @author: Author
 
-@block:
 Content before any chapter
+
+#chapter: Chapter One
+More content
     "#;
 
+    // Content before any chapter is just ignored, so this should parse successfully
     let result = BkParser::parse_string(content, Utc::now(), Utc::now());
-    match &result {
-        Err(BkParseError::BlockBeforeChapter { .. }) => {
-            // This is the expected error
-        }
-        Err(BkParseError::NoChapters) => {
-            // This is also acceptable - we have no chapters because @page failed to create one
-            // The error manifests as NoChapters at finalize time
-        }
-        _ => panic!(
-            "Expected BlockBeforeChapter or NoChapters error, got: {:?}",
-            result
-        ),
-    }
+    assert!(result.is_ok());
+    let book = result.unwrap();
+    // The content before the chapter should not be in any chapter
+    assert_eq!(book.chapters[0].content, "More content");
 }
 
 #[test]
@@ -208,7 +192,6 @@ fn test_error_chapter_without_title() {
 @author: Author
 
 #chapter:
-@block:
 Content
     "#;
 
@@ -227,7 +210,6 @@ fn test_error_duplicate_title() {
 @author: Author
 
 #chapter: Chapter
-@block:
 Content
     "#;
 
@@ -246,7 +228,6 @@ fn test_deterministic_chapter_ids() {
 @id: 550e8400-e29b-41d4-a009-426655440000
 
 #chapter: Chapter One
-@block:
 Content
     "#;
 
@@ -258,68 +239,31 @@ Content
 }
 
 #[test]
-fn test_deterministic_block_ids() {
-    let content = r#"
-@title: Book
-@author: Author
-@id: 550e8400-e29b-41d4-a009-426655440000
-
-#chapter: Chapter One
-@block:
-First block
-
-@block:
-Second block
-    "#;
-
-    let book1 = BkParser::parse_string(content, Utc::now(), Utc::now()).unwrap();
-    let book2 = BkParser::parse_string(content, Utc::now(), Utc::now()).unwrap();
-
-    // Same content should produce same block IDs
-    assert_eq!(
-        book1.chapters[0].blocks[0].id,
-        book2.chapters[0].blocks[0].id
-    );
-    assert_eq!(
-        book1.chapters[0].blocks[1].id,
-        book2.chapters[0].blocks[1].id
-    );
-
-    // Different blocks should have different IDs
-    assert_ne!(
-        book1.chapters[0].blocks[0].id,
-        book1.chapters[0].blocks[1].id
-    );
-}
-
-#[test]
-fn test_empty_blocks_ignored() {
+fn test_empty_content_trimmed() {
     let content = r#"
 @title: Book
 @author: Author
 
 #chapter: Chapter
-@block:
 
-@block:
+
 Content
     "#;
 
     let book = BkParser::parse_string(content, Utc::now(), Utc::now()).unwrap();
-    // Empty block should not create a block entry
-    assert_eq!(book.chapters[0].blocks.len(), 1);
-    assert_eq!(book.chapters[0].blocks[0].content, "Content");
+    // Leading/trailing whitespace should be trimmed
+    assert_eq!(book.chapters[0].content, "Content");
 }
 
 #[test]
 fn test_whitespace_handling() {
-    let content = "  @title:   Whitespace Book  \n  @author:  Author  \n\n#chapter:  My Chapter  \n@block:\n  Content with spaces  ";
+    let content = "  @title:   Whitespace Book  \n  @author:  Author  \n\n#chapter:  My Chapter  \n  Content with spaces  ";
 
     let book = BkParser::parse_string(content, Utc::now(), Utc::now()).unwrap();
     assert_eq!(book.title, "Whitespace Book");
     assert_eq!(book.author, "Author");
     assert_eq!(book.chapters[0].title, "My Chapter");
-    assert_eq!(book.chapters[0].blocks[0].content, "Content with spaces");
+    assert_eq!(book.chapters[0].content, "Content with spaces");
 }
 
 #[test]
@@ -329,7 +273,6 @@ fn test_unicode_content() {
 @author: 作者
 
 #chapter: Chapitre Un
-@block:
 Hello 世界! Привет мир! 🌍
     "#;
 
@@ -337,10 +280,7 @@ Hello 世界! Привет мир! 🌍
     assert_eq!(book.title, "Unicode Book 📚");
     assert_eq!(book.author, "作者");
     assert_eq!(book.chapters[0].title, "Chapitre Un");
-    assert_eq!(
-        book.chapters[0].blocks[0].content,
-        "Hello 世界! Привет мир! 🌍"
-    );
+    assert_eq!(book.chapters[0].content, "Hello 世界! Привет мир! 🌍");
 }
 
 #[test]

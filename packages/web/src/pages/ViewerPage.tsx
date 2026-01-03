@@ -4,11 +4,11 @@ import { Book } from '@/lib/types'
 
 export default function ViewerPage() {
   const [book, setBook] = useState<Book | null>(null)
-  const [currentPage, setCurrentPage] = useState(0)
+  const [currentSpread, setCurrentSpread] = useState(0)
   const [editingDedication, setEditingDedication] = useState(false)
   const [dedicationText, setDedicationText] = useState('')
-  const [editingBlock, setEditingBlock] = useState<string | null>(null)
-  const [blockTexts, setBlockTexts] = useState<Map<string, string>>(new Map())
+  const [editingChapter, setEditingChapter] = useState<string | null>(null)
+  const [chapterTexts, setChapterTexts] = useState<Map<string, string>>(new Map())
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -20,14 +20,12 @@ export default function ViewerPage() {
         setBook(parsedBook)
         setDedicationText(parsedBook.dedication || 'This book is dedicated to...')
 
-        // Initialize block texts
+        // Initialize chapter texts
         const texts = new Map<string, string>()
         parsedBook.chapters.forEach((chapter) => {
-          chapter.blocks.forEach((block) => {
-            texts.set(block.id, block.content)
-          })
+          texts.set(chapter.id, chapter.content)
         })
-        setBlockTexts(texts)
+        setChapterTexts(texts)
 
         // Update last opened timestamp
         localStorage.setItem(`book-title-${parsedBook.id}`, parsedBook.title)
@@ -58,18 +56,15 @@ export default function ViewerPage() {
       setEditingDedication(false)
     }
 
-    // Save block if editing
-    if (editingBlock) {
-      updatedBook.chapters = updatedBook.chapters.map((chapter) => ({
-        ...chapter,
-        blocks: chapter.blocks.map((block) =>
-          block.id === editingBlock
-            ? { ...block, content: blockTexts.get(editingBlock) || '' }
-            : block
-        ),
-      }))
+    // Save chapter if editing
+    if (editingChapter) {
+      updatedBook.chapters = updatedBook.chapters.map((chapter) =>
+        chapter.id === editingChapter
+          ? { ...chapter, content: chapterTexts.get(editingChapter) || '' }
+          : chapter
+      )
       hasChanges = true
-      setEditingBlock(null)
+      setEditingChapter(null)
     }
 
     if (hasChanges) {
@@ -79,17 +74,25 @@ export default function ViewerPage() {
     }
   }
 
-  const handlePrevPage = () => {
-    saveActiveEdits()
-    if (currentPage > 0) {
-      setCurrentPage(currentPage - 1)
+  const handlePreviousSpread = () => {
+    if (currentSpread > 0) {
+      saveActiveEdits()
+      setCurrentSpread(currentSpread - 1)
     }
   }
 
-  const handleNextPage = () => {
-    saveActiveEdits()
-    // For now, allow unlimited page turns (we'll add proper limits later)
-    setCurrentPage(currentPage + 1)
+  const handleNextSpread = () => {
+    // Calculate total number of spreads
+    // Spread 0: title + dedication
+    // Spread 1: ToC + first chapter
+    // Spread 2+: chapters paired
+    const totalPages = 3 + book.chapters.length // title, dedication, ToC, then chapters
+    const maxSpread = Math.ceil(totalPages / 2) - 1
+
+    if (currentSpread < maxSpread) {
+      saveActiveEdits()
+      setCurrentSpread(currentSpread + 1)
+    }
   }
 
   const handleDedicationBlur = () => {
@@ -102,41 +105,23 @@ export default function ViewerPage() {
     }
   }
 
-  const handleBlockBlur = (blockId: string) => {
-    setEditingBlock(null)
+  const handleChapterBlur = (chapterId: string) => {
+    setEditingChapter(null)
     if (book) {
       const updatedBook = { ...book }
-      updatedBook.chapters = updatedBook.chapters.map((chapter) => ({
-        ...chapter,
-        blocks: chapter.blocks.map((block) =>
-          block.id === blockId ? { ...block, content: blockTexts.get(blockId) || '' } : block
-        ),
-      }))
+      updatedBook.chapters = updatedBook.chapters.map((chapter) =>
+        chapter.id === chapterId
+          ? { ...chapter, content: chapterTexts.get(chapterId) || '' }
+          : chapter
+      )
       setBook(updatedBook)
       localStorage.setItem('current-book', JSON.stringify(updatedBook))
       saveBookToFile(updatedBook)
     }
   }
 
-  const handleBlockTextChange = (blockId: string, text: string) => {
-    setBlockTexts(new Map(blockTexts.set(blockId, text)))
-  }
-
-  const getCurrentChapter = (pageNumber: number) => {
-    if (!book || pageNumber < 3) return null
-
-    // Find which chapter/block this page corresponds to
-    const contentPageIndex = pageNumber - 3
-    let blockCount = 0
-
-    for (const chapter of book.chapters) {
-      if (contentPageIndex < blockCount + chapter.blocks.length) {
-        return chapter
-      }
-      blockCount += chapter.blocks.length
-    }
-
-    return book.chapters[book.chapters.length - 1] || null
+  const handleChapterTextChange = (chapterId: string, text: string) => {
+    setChapterTexts(new Map(chapterTexts.set(chapterId, text)))
   }
 
   const saveBookToFile = (bookToSave: Book) => {
@@ -149,13 +134,10 @@ export default function ViewerPage() {
     }
     content += '\n'
 
-    // Add chapters and blocks
+    // Add chapters
     bookToSave.chapters.forEach((chapter) => {
       content += `#chapter: ${chapter.title}\n`
-      chapter.blocks.forEach((block) => {
-        content += `@block: ${block.id}\n`
-        content += `${block.content}\n\n`
-      })
+      content += `${chapter.content}\n\n`
     })
 
     // Trigger download
@@ -170,9 +152,13 @@ export default function ViewerPage() {
     URL.revokeObjectURL(url)
   }
 
+  // Get left and right page numbers for current spread
+  const getLeftPageNumber = () => currentSpread * 2
+  const getRightPageNumber = () => currentSpread * 2 + 1
+
   // Helper to render page content based on page number
   const renderPageContent = (pageNumber: number) => {
-    // Page 0 (right side of spread 0): Title page
+    // Page 0: Title page
     if (pageNumber === 0) {
       return (
         <div
@@ -187,9 +173,9 @@ export default function ViewerPage() {
           <h1
             style={{
               fontFamily: 'Libre Baskerville, Georgia, serif',
-              fontSize: '48px',
+              fontSize: '32px',
               fontWeight: 'bold',
-              marginBottom: '20px',
+              marginBottom: '16px',
               textAlign: 'center',
             }}
           >
@@ -198,7 +184,7 @@ export default function ViewerPage() {
           <p
             style={{
               fontFamily: 'Libre Baskerville, Georgia, serif',
-              fontSize: '24px',
+              fontSize: '16px',
               color: 'rgba(0,0,0,0.6)',
             }}
           >
@@ -208,7 +194,7 @@ export default function ViewerPage() {
       )
     }
 
-    // Page 1 (left side of spread 1): Dedication page
+    // Page 1: Dedication page
     if (pageNumber === 1) {
       return (
         <div
@@ -227,8 +213,9 @@ export default function ViewerPage() {
               autoFocus
               style={{
                 fontFamily: 'Libre Baskerville, Georgia, serif',
-                fontSize: '18px',
+                fontSize: '14px',
                 fontStyle: 'italic',
+                lineHeight: '1.6',
                 color: 'rgba(0,0,0,0.6)',
                 textAlign: 'center',
                 border: 'none',
@@ -237,6 +224,9 @@ export default function ViewerPage() {
                 background: 'transparent',
                 width: '100%',
                 minHeight: '100px',
+                padding: 0,
+                margin: 0,
+                cursor: 'text',
               }}
             />
           ) : (
@@ -244,8 +234,9 @@ export default function ViewerPage() {
               onClick={() => setEditingDedication(true)}
               style={{
                 fontFamily: 'Libre Baskerville, Georgia, serif',
-                fontSize: '18px',
+                fontSize: '14px',
                 fontStyle: 'italic',
+                lineHeight: '1.6',
                 color: 'rgba(0,0,0,0.6)',
                 textAlign: 'center',
                 cursor: 'text',
@@ -258,149 +249,170 @@ export default function ViewerPage() {
       )
     }
 
-    // Page 2 (right side of spread 1): Table of Contents
+    // Page 2: Table of Contents
     if (pageNumber === 2) {
       return (
         <div>
           <h2
             style={{
               fontFamily: 'Libre Baskerville, Georgia, serif',
-              fontSize: '32px',
+              fontSize: '24px',
               fontWeight: 'bold',
-              marginBottom: '40px',
+              marginBottom: '32px',
               textAlign: 'center',
             }}
           >
             Contents
           </h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {book.chapters.map((chapter, index) => (
-              <button
-                key={chapter.id}
-                onClick={() => {
-                  saveActiveEdits()
-                  // Navigate to chapter (we'll implement this)
-                  // For now, just go to page 3+ where content starts
-                  setCurrentPage(Math.floor((3 + index * 2) / 2))
-                }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                  padding: '8px 0',
-                  fontFamily: 'Libre Baskerville, Georgia, serif',
-                  fontSize: '18px',
-                  color: 'rgba(0,0,0,0.7)',
-                  transition: 'color 0.2s',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.color = 'rgba(0,0,0,1)'
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.color = 'rgba(0,0,0,0.7)'
-                }}
-              >
-                {chapter.title}
-              </button>
-            ))}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {book.chapters.map((chapter, index) => {
+              // Calculate which spread this chapter will be on
+              const chapterPageNumber = 3 + index
+              const chapterSpread = Math.floor(chapterPageNumber / 2)
+
+              return (
+                <button
+                  key={chapter.id}
+                  onClick={() => {
+                    saveActiveEdits()
+                    setCurrentSpread(chapterSpread)
+                  }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    padding: '6px 0',
+                    fontFamily: 'Libre Baskerville, Georgia, serif',
+                    fontSize: '14px',
+                    color: 'rgba(0,0,0,0.7)',
+                    transition: 'color 0.2s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = 'rgba(0,0,0,1)'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = 'rgba(0,0,0,0.7)'
+                  }}
+                >
+                  {chapter.title}
+                </button>
+              )
+            })}
           </div>
         </div>
       )
     }
 
-    // Page 3+: Actual content (for now, show blocks)
-    const contentPageIndex = pageNumber - 3
+    // Page 3+: Chapter content
+    const chapterIndex = pageNumber - 3
+    if (chapterIndex >= 0 && chapterIndex < book.chapters.length) {
+      const chapter = book.chapters[chapterIndex]
+      const isEditing = editingChapter === chapter.id
+      const chapterText = chapterTexts.get(chapter.id) || ''
 
-    // Find the block across all chapters
-    let blockCount = 0
-    let block = null
-    let currentChapter = null
-    let isFirstBlockOfChapter = false
-
-    for (const chapter of book.chapters) {
-      if (contentPageIndex < blockCount + chapter.blocks.length) {
-        const blockIndexInChapter = contentPageIndex - blockCount
-        block = chapter.blocks[blockIndexInChapter]
-        currentChapter = chapter
-        isFirstBlockOfChapter = blockIndexInChapter === 0
-        break
-      }
-      blockCount += chapter.blocks.length
-    }
-
-    if (!block) return ''
-
-    const isEditing = editingBlock === block.id
-    const blockText = blockTexts.get(block.id) || ''
-
-    if (isEditing) {
-      return (
-        <>
-          {isFirstBlockOfChapter && (
+      if (isEditing) {
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
             <h2
               style={{
                 fontFamily: 'Libre Baskerville, Georgia, serif',
-                fontSize: '32px',
+                fontSize: '20px',
                 fontWeight: 'bold',
-                marginBottom: '40px',
+                marginBottom: '24px',
                 textAlign: 'center',
                 color: 'rgba(0,0,0,0.85)',
               }}
             >
-              {currentChapter?.title}
+              {chapter.title}
             </h2>
-          )}
-          <textarea
-            value={blockText}
-            onChange={(e) => handleBlockTextChange(block.id, e.target.value)}
-            onBlur={() => handleBlockBlur(block.id)}
-            autoFocus
-            style={{
-              fontFamily: 'Libre Baskerville, Georgia, serif',
-              fontSize: '18px',
-              lineHeight: '1.8',
-              color: 'rgba(0,0,0,0.85)',
-              border: 'none',
-              outline: 'none',
-              resize: 'none',
-              background: 'transparent',
-              width: '100%',
-              height: '100%',
-            }}
-          />
-        </>
-      )
-    }
+            <textarea
+              value={chapterText}
+              onChange={(e) => handleChapterTextChange(chapter.id, e.target.value)}
+              onBlur={() => handleChapterBlur(chapter.id)}
+              autoFocus
+              style={{
+                fontFamily: 'Libre Baskerville, Georgia, serif',
+                fontSize: '14px',
+                lineHeight: '1.6',
+                color: 'rgba(0,0,0,0.85)',
+                border: 'none',
+                outline: 'none',
+                resize: 'none',
+                background: 'transparent',
+                width: '100%',
+                flex: 1,
+                padding: 0,
+                margin: 0,
+                cursor: 'text',
+              }}
+            />
+          </div>
+        )
+      }
 
-    return (
-      <>
-        {isFirstBlockOfChapter && (
+      return (
+        <>
           <h2
             style={{
               fontFamily: 'Libre Baskerville, Georgia, serif',
-              fontSize: '32px',
+              fontSize: '20px',
               fontWeight: 'bold',
-              marginBottom: '40px',
+              marginBottom: '24px',
               textAlign: 'center',
               color: 'rgba(0,0,0,0.85)',
             }}
           >
-            {currentChapter?.title}
+            {chapter.title}
           </h2>
-        )}
-        <p
-          onClick={() => setEditingBlock(block.id)}
-          style={{
-            cursor: 'text',
-            margin: 0,
-          }}
-        >
-          {blockText}
-        </p>
-      </>
-    )
+          <div
+            onClick={() => setEditingChapter(chapter.id)}
+            style={{
+              cursor: 'text',
+              fontFamily: 'Libre Baskerville, Georgia, serif',
+              fontSize: '14px',
+              lineHeight: '1.6',
+              color: 'rgba(0,0,0,0.85)',
+              whiteSpace: 'pre-wrap',
+            }}
+          >
+            {chapterText}
+          </div>
+        </>
+      )
+    }
+
+    return null
   }
+
+  // Triangle styles
+  const cornerTriangleStyle = {
+    position: 'absolute' as const,
+    width: 0,
+    height: 0,
+    cursor: 'pointer',
+    transition: 'border-color 0.2s ease',
+    zIndex: 10,
+  }
+
+  const topLeftTriangleStyle = {
+    ...cornerTriangleStyle,
+    top: 0,
+    left: 0,
+    borderTop: '60px solid rgba(0,0,0,0.08)',
+    borderRight: '60px solid transparent',
+  }
+
+  const topRightTriangleStyle = {
+    ...cornerTriangleStyle,
+    top: 0,
+    right: 0,
+    borderTop: '60px solid rgba(0,0,0,0.08)',
+    borderLeft: '60px solid transparent',
+  }
+
+  const leftPageNumber = getLeftPageNumber()
+  const rightPageNumber = getRightPageNumber()
 
   return (
     <div
@@ -411,165 +423,111 @@ export default function ViewerPage() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: '20px',
+        position: 'relative',
       }}
     >
-      {/* Left Arrow */}
-      <button
-        onClick={handlePrevPage}
-        disabled={currentPage === 0}
-        style={{
-          background: 'none',
-          border: 'none',
-          fontSize: '96px',
-          color: currentPage === 0 ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.5)',
-          cursor: currentPage === 0 ? 'default' : 'pointer',
-          padding: '20px',
-          transition: 'color 0.2s',
-        }}
-        onMouseEnter={(e) => {
-          if (currentPage > 0) {
-            e.currentTarget.style.color = 'rgba(0,0,0,0.8)'
-          }
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.color = currentPage === 0 ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.5)'
-        }}
-      >
-        ‹
-      </button>
+      {/* Home button in bottom-left */}
+      <div style={{ position: 'absolute', bottom: '24px', left: '24px', zIndex: 20 }}>
+        <button
+          onClick={() => {
+            saveActiveEdits()
+            navigate('/')
+          }}
+          style={{
+            background: 'none',
+            border: 'none',
+            fontSize: '24px',
+            cursor: 'pointer',
+            padding: '8px',
+            opacity: 0.5,
+            transition: 'opacity 0.2s',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.opacity = '0.8'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.opacity = '0.5'
+          }}
+        >
+          🏠
+        </button>
+      </div>
 
+      {/* Two-page spread */}
       <div
         style={{
-          width: '90vw',
-          height: '90vh',
           display: 'flex',
+          gap: '10px',
+          justifyContent: 'center',
+          alignItems: 'center',
+          height: '100%',
+          padding: '20px',
         }}
       >
         {/* Left Page */}
         <div
           style={{
-            flex: 1,
+            position: 'relative',
+            width: '40vw',
+            height: '90vh',
             backgroundColor: 'white',
-            padding: '60px 60px 40px 60px',
-            fontFamily: 'Libre Baskerville, Georgia, serif',
-            fontSize: '18px',
-            lineHeight: '1.8',
-            color: 'rgba(0,0,0,0.85)',
-            overflow: 'hidden',
-            border: '1px solid rgba(0,0,0,0.08)',
-            borderTopLeftRadius: '8px',
-            borderBottomLeftRadius: '8px',
+            padding: '50px',
+            overflow: 'auto',
             display: 'flex',
             flexDirection: 'column',
           }}
         >
-          <div
-            onClick={() => {
-              saveActiveEdits()
-              setCurrentPage(1)
-            }}
-            style={{
-              fontFamily: 'Libre Baskerville, Georgia, serif',
-              fontSize: '14px',
-              color: 'rgba(0,0,0,0.4)',
-              marginBottom: '40px',
-              textAlign: 'left',
-              cursor: 'pointer',
-              transition: 'color 0.2s',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.color = 'rgba(0,0,0,0.7)'
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.color = 'rgba(0,0,0,0.4)'
-            }}
-          >
-            {getCurrentChapter(currentPage * 2)
-              ? `Chapter: ${getCurrentChapter(currentPage * 2)?.title}`
-              : ''}
-          </div>
-          <div style={{ flex: 1, overflow: 'hidden' }}>{renderPageContent(currentPage * 2)}</div>
-          <div
-            style={{
-              textAlign: 'center',
-              fontFamily: 'Libre Baskerville, Georgia, serif',
-              fontSize: '18px',
-              color: 'rgba(0,0,0,0.4)',
-              marginTop: '20px',
-            }}
-          >
-            ~{currentPage * 2 + 1}~
-          </div>
+          {/* Top-left corner triangle for previous spread */}
+          {currentSpread > 0 && (
+            <div
+              onClick={(e) => {
+                e.stopPropagation()
+                handlePreviousSpread()
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderTopColor = 'rgba(0,0,0,0.25)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderTopColor = 'rgba(0,0,0,0.08)'
+              }}
+              style={topLeftTriangleStyle}
+            />
+          )}
+          {renderPageContent(leftPageNumber)}
         </div>
 
         {/* Right Page */}
         <div
           style={{
-            flex: 1,
+            position: 'relative',
+            width: '40vw',
+            height: '90vh',
             backgroundColor: 'white',
-            padding: '60px 60px 40px 60px',
-            fontFamily: 'Libre Baskerville, Georgia, serif',
-            fontSize: '18px',
-            lineHeight: '1.8',
-            color: 'rgba(0,0,0,0.85)',
-            overflow: 'hidden',
-            border: '1px solid rgba(0,0,0,0.08)',
-            borderTopRightRadius: '8px',
-            borderBottomRightRadius: '8px',
+            padding: '50px',
+            overflow: 'auto',
             display: 'flex',
             flexDirection: 'column',
           }}
         >
-          <div
-            style={{
-              fontFamily: 'Libre Baskerville, Georgia, serif',
-              fontSize: '14px',
-              color: 'rgba(0,0,0,0.4)',
-              marginBottom: '40px',
-              textAlign: 'right',
-            }}
-          >
-            {book.author}
-          </div>
-          <div style={{ flex: 1, overflow: 'hidden' }}>
-            {renderPageContent(currentPage * 2 + 1)}
-          </div>
-          <div
-            style={{
-              textAlign: 'center',
-              fontFamily: 'Libre Baskerville, Georgia, serif',
-              fontSize: '16px',
-              color: 'rgba(0,0,0,0.4)',
-              marginTop: '20px',
-            }}
-          >
-            ~{currentPage * 2 + 2}~
-          </div>
+          {/* Top-right corner triangle for next spread */}
+          {currentSpread < Math.ceil((3 + book.chapters.length) / 2) - 1 && (
+            <div
+              onClick={(e) => {
+                e.stopPropagation()
+                handleNextSpread()
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderTopColor = 'rgba(0,0,0,0.25)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderTopColor = 'rgba(0,0,0,0.08)'
+              }}
+              style={topRightTriangleStyle}
+            />
+          )}
+          {renderPageContent(rightPageNumber)}
         </div>
       </div>
-
-      {/* Right Arrow */}
-      <button
-        onClick={handleNextPage}
-        style={{
-          background: 'none',
-          border: 'none',
-          fontSize: '96px',
-          color: 'rgba(0,0,0,0.5)',
-          cursor: 'pointer',
-          padding: '20px',
-          transition: 'color 0.2s',
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.color = 'rgba(0,0,0,0.8)'
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.color = 'rgba(0,0,0,0.5)'
-        }}
-      >
-        ›
-      </button>
     </div>
   )
 }

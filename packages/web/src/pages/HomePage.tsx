@@ -102,11 +102,9 @@ export default function HomePage() {
 @dedication:
 
 #chapter: Chapter One
-@block:
-Write your first page here...
+Write your first chapter here...
 
-@block:
-Continue your story...
+Start typing and your story will flow naturally across pages.
 `
 
     try {

@@ -18,9 +18,6 @@ pub enum BkParseError {
     #[error("Chapter without title at line {line}")]
     MissingChapterTitle { line: usize },
 
-    #[error("Page block defined before any chapter at line {line}")]
-    BlockBeforeChapter { line: usize },
-
     #[error("Empty file or no content found")]
     EmptyFile,
 
@@ -43,9 +40,6 @@ impl BkParseError {
             }
             Self::InvalidUuid(_) => {
                 "The @id field must be a valid UUID (e.g., 550e8400-e29b-41d4-a009-426655440000). You can omit @id to generate one automatically.".to_string()
-            }
-            Self::BlockBeforeChapter { .. } => {
-                "Move @block: blocks inside a #chapter: section".to_string()
             }
             Self::NoChapters => "Add at least one chapter using '#chapter: Chapter Title'".to_string(),
             Self::MalformedMetadata { reason, .. } => {

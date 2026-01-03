@@ -5,7 +5,6 @@ use uuid::Uuid;
 pub(crate) enum ParserState {
     ReadingMetadata,
     ReadingChapterHeader,
-    ReadingBlock,
 }
 
 /// Intermediate structure for book metadata during parsing
@@ -22,7 +21,7 @@ pub(crate) struct BkMetadata {
 pub(crate) struct BkChapter {
     pub title: String,
     pub order: usize,
-    pub blocks: Vec<String>, // Raw content strings
+    pub content: String, // Raw content
 }
 
 impl BkChapter {
@@ -30,7 +29,7 @@ impl BkChapter {
         Self {
             title,
             order,
-            blocks: Vec::new(),
+            content: String::new(),
         }
     }
 }

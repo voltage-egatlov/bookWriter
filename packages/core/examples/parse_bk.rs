@@ -11,14 +11,11 @@ fn main() {
 @dedication: To my readers
 
 #chapter: Introduction
-@page:
 Welcome to this book. This is the first page of the introduction.
 
-@page:
 And this is the second page, with more content.
 
 #chapter: Chapter Two
-@page:
 Now we're in chapter two. The story continues...
     "#;
 
@@ -32,10 +29,11 @@ Now we're in chapter two. The story continues...
 
             for chapter in &book.chapters {
                 println!("\nChapter: {}", chapter.title);
-                println!("  Blocks: {}", chapter.blocks.len());
-                for (i, block) in chapter.blocks.iter().enumerate() {
-                    println!("  Block {}: {} chars", i + 1, block.content.len());
-                }
+                println!("  Content length: {} chars", chapter.content.len());
+                println!(
+                    "  Preview: {}",
+                    &chapter.content.chars().take(50).collect::<String>()
+                );
             }
         }
         Err(e) => {
@@ -56,12 +54,10 @@ Now we're in chapter two. The story continues...
                 println!("Author: {}", book.author);
                 println!("Chapters: {}", book.chapters.len());
 
-                // Display first chapter's blocks
+                // Display first chapter's content
                 if let Some(first_chapter) = book.chapters.first() {
-                    println!("\nFirst chapter blocks:");
-                    for (i, block) in first_chapter.blocks.iter().enumerate() {
-                        println!("Block {}: {}", i + 1, block.content);
-                    }
+                    println!("\nFirst chapter content:");
+                    println!("{}", first_chapter.content);
                 }
             }
             Err(e) => {
@@ -80,7 +76,6 @@ Now we're in chapter two. The story continues...
 @title: Invalid Book
 
 #chapter: Chapter One
-@page:
 Content here
     "#;
 

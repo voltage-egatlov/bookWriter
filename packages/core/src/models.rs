@@ -2,21 +2,6 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-/// Represents a content block within a chapter (e.g., a page)
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct Block {
-    pub id: Uuid,
-    pub content: String,
-    pub order: usize,
-    pub block_type: BlockType,
-}
-
-/// Type of content block
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum BlockType {
-    Page,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Book {
     pub id: Uuid,
@@ -32,7 +17,7 @@ pub struct Book {
 pub struct Chapter {
     pub id: Uuid,
     pub title: String,
-    pub blocks: Vec<Block>,
+    pub content: String,
     pub order: usize,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -55,16 +40,10 @@ impl Book {
     pub fn add_chapter(&mut self, title: String, content: String) {
         let now = Utc::now();
         let order = self.chapters.len();
-        let block = Block {
-            id: Uuid::new_v4(),
-            content,
-            order: 0,
-            block_type: BlockType::Page,
-        };
         let chapter = Chapter {
             id: generate_chapter_id(&self.id, order, &title),
             title,
-            blocks: vec![block],
+            content,
             order,
             created_at: now,
             updated_at: now,
@@ -78,9 +57,4 @@ impl Book {
 pub fn generate_chapter_id(book_id: &Uuid, order: usize, title: &str) -> Uuid {
     let name = format!("{}-{}", order, title);
     Uuid::new_v5(book_id, name.as_bytes())
-}
-
-/// Generate deterministic block ID from chapter ID and order
-pub fn generate_block_id(chapter_id: &Uuid, order: usize) -> Uuid {
-    Uuid::new_v5(chapter_id, order.to_string().as_bytes())
 }

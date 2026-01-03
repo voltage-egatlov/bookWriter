@@ -1,16 +1,7 @@
-export type BlockType = 'Page'
-
-export interface Block {
-  id: string
-  content: string
-  order: number
-  block_type: BlockType
-}
-
 export interface Chapter {
   id: string
   title: string
-  blocks: Block[]
+  content: string
   order: number
   created_at: string
   updated_at: string
