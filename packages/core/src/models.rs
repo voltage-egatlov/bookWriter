@@ -38,18 +38,6 @@ pub struct Chapter {
     pub updated_at: DateTime<Utc>,
 }
 
-impl Chapter {
-    /// Helper method to get chapter content as a single string
-    /// Useful for backward compatibility
-    pub fn content(&self) -> String {
-        self.blocks
-            .iter()
-            .map(|b| b.content.as_str())
-            .collect::<Vec<_>>()
-            .join("\n\n")
-    }
-}
-
 impl Book {
     pub fn new(title: String, author: String) -> Self {
         let now = Utc::now();

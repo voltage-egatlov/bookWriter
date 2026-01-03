@@ -56,10 +56,12 @@ Now we're in chapter two. The story continues...
                 println!("Author: {}", book.author);
                 println!("Chapters: {}", book.chapters.len());
 
-                // Demonstrate the content() helper method
+                // Display first chapter's blocks
                 if let Some(first_chapter) = book.chapters.first() {
-                    println!("\nFirst chapter full content:");
-                    println!("{}", first_chapter.content());
+                    println!("\nFirst chapter blocks:");
+                    for (i, block) in first_chapter.blocks.iter().enumerate() {
+                        println!("Block {}: {}", i + 1, block.content);
+                    }
                 }
             }
             Err(e) => {

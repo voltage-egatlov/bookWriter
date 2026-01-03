@@ -344,27 +344,6 @@ Hello 世界! Привет мир! 🌍
 }
 
 #[test]
-fn test_chapter_content_helper() {
-    let content = r#"
-@title: Book
-@author: Author
-
-#chapter: Chapter
-@block:
-First page
-
-@block:
-Second page
-    "#;
-
-    let book = BkParser::parse_string(content, Utc::now(), Utc::now()).unwrap();
-    let chapter_content = book.chapters[0].content();
-    assert!(chapter_content.contains("First page"));
-    assert!(chapter_content.contains("Second page"));
-    assert!(chapter_content.contains("\n\n")); // Blocks joined with double newline
-}
-
-#[test]
 fn test_help_messages() {
     let error = BkParseError::MissingMetadata {
         field: "title".to_string(),
