@@ -109,6 +109,12 @@ export default function HomePage() {
       localStorage.setItem('current-book', JSON.stringify(book))
       localStorage.setItem('current-book-filename', file.name)
 
+      // Create marker key and metadata for recent books
+      localStorage.setItem(`book-position-${book.id}`, '0')
+      localStorage.setItem(`book-title-${book.id}`, book.title)
+      localStorage.setItem(`book-last-opened-${book.id}`, Date.now().toString())
+      localStorage.setItem(`book-content-${book.id}`, JSON.stringify(book))
+
       // Navigate to viewer with file handle
       navigate('/viewer', { state: { fileHandle } })
     } catch (err: any) {
@@ -155,6 +161,12 @@ Start typing and your story will flow naturally across pages.
 
       // Store in localStorage
       localStorage.setItem('current-book', JSON.stringify(book))
+
+      // Create marker key and metadata for recent books
+      localStorage.setItem(`book-position-${book.id}`, '0')
+      localStorage.setItem(`book-title-${book.id}`, book.title)
+      localStorage.setItem(`book-last-opened-${book.id}`, Date.now().toString())
+      localStorage.setItem(`book-content-${book.id}`, JSON.stringify(book))
 
       // Close modal and reset
       setShowNewBookModal(false)
@@ -345,7 +357,7 @@ Start typing and your story will flow naturally across pages.
                       if (title) title.style.color = 'rgba(0, 0, 0, 0.7)'
                     }}
                     onClick={() => {
-                      window.location.href = `/viewer?bookId=${book.id}`
+                      navigate(`/viewer?bookId=${book.id}`)
                     }}
                   >
                     <div

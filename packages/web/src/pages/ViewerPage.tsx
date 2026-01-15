@@ -10,6 +10,7 @@ export default function ViewerPage() {
   const [editingChapter, setEditingChapter] = useState<string | null>(null)
   const [chapterTexts, setChapterTexts] = useState<Map<string, string>>(new Map())
   const [fileHandle, setFileHandle] = useState<FileSystemFileHandle | null>(null)
+  const [loadedFromCache, setLoadedFromCache] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -19,7 +20,48 @@ export default function ViewerPage() {
       setFileHandle(location.state.fileHandle)
     }
 
-    // Load book from localStorage
+    // Check for bookId query parameter for recent books
+    const searchParams = new URLSearchParams(location.search)
+    const bookId = searchParams.get('bookId')
+
+    if (bookId) {
+      // Loading from recent books - try to load cached content
+      const cachedContent = localStorage.getItem(`book-content-${bookId}`)
+      if (cachedContent) {
+        try {
+          const parsedBook = JSON.parse(cachedContent) as Book
+          setBook(parsedBook)
+          setDedicationText(parsedBook.dedication || 'This book is dedicated to...')
+
+          // Initialize chapter texts
+          const texts = new Map<string, string>()
+          parsedBook.chapters.forEach((chapter) => {
+            texts.set(chapter.id, chapter.content)
+          })
+          setChapterTexts(texts)
+
+          // Update last opened timestamp
+          localStorage.setItem(`book-last-opened-${bookId}`, Date.now().toString())
+
+          // Also update current-book for consistency
+          localStorage.setItem('current-book', JSON.stringify(parsedBook))
+
+          // Mark as loaded from cache
+          setLoadedFromCache(true)
+
+          console.log('Loaded book from cache:', parsedBook.title)
+          return // Exit early - don't load from current-book
+        } catch (err) {
+          console.error('Failed to load cached book:', err)
+          // Fall through to normal flow
+        }
+      } else {
+        console.warn(`No cached content found for bookId: ${bookId}`)
+        // Fall through to normal flow
+      }
+    }
+
+    // Normal flow - load from current-book
     const currentBook = localStorage.getItem('current-book')
     if (currentBook) {
       try {
@@ -180,6 +222,7 @@ export default function ViewerPage() {
       })
 
       setFileHandle(handle) // Store for future saves
+      setLoadedFromCache(false) // Clear cache indicator once we have a file handle
 
       const content = generateBkContent(bookToSave)
       const writable = await handle.createWritable()
@@ -195,6 +238,18 @@ export default function ViewerPage() {
   }
 
   const saveBookToFile = async (bookToSave: Book) => {
+    // FIRST: Always cache the book content for recent books
+    try {
+      localStorage.setItem(`book-content-${bookToSave.id}`, JSON.stringify(bookToSave))
+      localStorage.setItem(`book-position-${bookToSave.id}`, '0') // Marker key for recent books
+      localStorage.setItem(`book-title-${bookToSave.id}`, bookToSave.title)
+      localStorage.setItem(`book-last-opened-${bookToSave.id}`, Date.now().toString())
+      console.log('Cached book content for recent books')
+    } catch (err) {
+      console.error('Failed to cache book content:', err)
+      // Continue with save even if caching fails
+    }
+
     // If File System Access API not supported, fall back to download
     if (!('showSaveFilePicker' in window)) {
       // Fallback: trigger download
@@ -512,6 +567,27 @@ export default function ViewerPage() {
         position: 'relative',
       }}
     >
+      {/* Visual indicator for cached books */}
+      {loadedFromCache && !fileHandle && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '10px',
+            right: '10px',
+            padding: '8px 12px',
+            background: 'rgba(255, 165, 0, 0.1)',
+            border: '1px solid rgba(255, 165, 0, 0.3)',
+            borderRadius: '4px',
+            fontSize: '12px',
+            color: 'rgba(0, 0, 0, 0.6)',
+            fontFamily: 'Inter, system-ui, sans-serif',
+            zIndex: 100,
+          }}
+        >
+          Loaded from cache - save to enable auto-save
+        </div>
+      )}
+
       {/* Home button in bottom-left */}
       <div style={{ position: 'absolute', bottom: '24px', left: '24px', zIndex: 20 }}>
         <button
