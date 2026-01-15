@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { parseBk } from '@/lib/wasm'
+import { storeFileHandle } from '@/lib/fileHandleDB'
 
 interface RecentBook {
   id: string
@@ -109,11 +110,13 @@ export default function HomePage() {
       localStorage.setItem('current-book', JSON.stringify(book))
       localStorage.setItem('current-book-filename', file.name)
 
-      // Create marker key and metadata for recent books
+      // Store file handle in IndexedDB
+      await storeFileHandle(book.id, fileHandle, file.name)
+
+      // Store metadata for recent books UI
       localStorage.setItem(`book-position-${book.id}`, '0')
       localStorage.setItem(`book-title-${book.id}`, book.title)
       localStorage.setItem(`book-last-opened-${book.id}`, Date.now().toString())
-      localStorage.setItem(`book-content-${book.id}`, JSON.stringify(book))
 
       // Navigate to viewer with file handle
       navigate('/viewer', { state: { fileHandle } })
@@ -162,11 +165,10 @@ Start typing and your story will flow naturally across pages.
       // Store in localStorage
       localStorage.setItem('current-book', JSON.stringify(book))
 
-      // Create marker key and metadata for recent books
+      // Store metadata for recent books (no file handle yet - will be stored on first save)
       localStorage.setItem(`book-position-${book.id}`, '0')
       localStorage.setItem(`book-title-${book.id}`, book.title)
       localStorage.setItem(`book-last-opened-${book.id}`, Date.now().toString())
-      localStorage.setItem(`book-content-${book.id}`, JSON.stringify(book))
 
       // Close modal and reset
       setShowNewBookModal(false)

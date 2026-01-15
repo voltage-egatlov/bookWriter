@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Book } from '@/lib/types'
+import { getFileHandle, storeFileHandle } from '@/lib/fileHandleDB'
+import { parseBk } from '@/lib/wasm'
 
 export default function ViewerPage() {
   const [book, setBook] = useState<Book | null>(null)
@@ -10,7 +12,6 @@ export default function ViewerPage() {
   const [editingChapter, setEditingChapter] = useState<string | null>(null)
   const [chapterTexts, setChapterTexts] = useState<Map<string, string>>(new Map())
   const [fileHandle, setFileHandle] = useState<FileSystemFileHandle | null>(null)
-  const [loadedFromCache, setLoadedFromCache] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -25,40 +26,42 @@ export default function ViewerPage() {
     const bookId = searchParams.get('bookId')
 
     if (bookId) {
-      // Loading from recent books - try to load cached content
-      const cachedContent = localStorage.getItem(`book-content-${bookId}`)
-      if (cachedContent) {
+      // Loading from recent books - retrieve file handle from IndexedDB
+      ;(async () => {
         try {
-          const parsedBook = JSON.parse(cachedContent) as Book
-          setBook(parsedBook)
-          setDedicationText(parsedBook.dedication || 'This book is dedicated to...')
+          const handle = await getFileHandle(bookId)
 
-          // Initialize chapter texts
-          const texts = new Map<string, string>()
-          parsedBook.chapters.forEach((chapter) => {
-            texts.set(chapter.id, chapter.content)
-          })
-          setChapterTexts(texts)
+          if (handle) {
+            setFileHandle(handle)
 
-          // Update last opened timestamp
-          localStorage.setItem(`book-last-opened-${bookId}`, Date.now().toString())
+            // Read from disk (always latest!)
+            const file = await handle.getFile()
+            const content = await file.text()
+            const parsedBook = await parseBk(content)
 
-          // Also update current-book for consistency
-          localStorage.setItem('current-book', JSON.stringify(parsedBook))
+            setBook(parsedBook)
+            setDedicationText(parsedBook.dedication || 'This book is dedicated to...')
 
-          // Mark as loaded from cache
-          setLoadedFromCache(true)
+            const texts = new Map<string, string>()
+            parsedBook.chapters.forEach((ch) => texts.set(ch.id, ch.content))
+            setChapterTexts(texts)
 
-          console.log('Loaded book from cache:', parsedBook.title)
-          return // Exit early - don't load from current-book
-        } catch (err) {
-          console.error('Failed to load cached book:', err)
-          // Fall through to normal flow
+            localStorage.setItem(`book-last-opened-${bookId}`, Date.now().toString())
+            localStorage.setItem('current-book', JSON.stringify(parsedBook))
+
+            console.log('Loaded from disk via IndexedDB handle:', parsedBook.title)
+            return
+          } else {
+            alert('Could not access file. Permission may have been revoked.')
+            navigate('/')
+          }
+        } catch (err: any) {
+          console.error('Failed to load:', err)
+          alert(`Failed to open: ${err.message || 'Unknown error'}`)
+          navigate('/')
         }
-      } else {
-        console.warn(`No cached content found for bookId: ${bookId}`)
-        // Fall through to normal flow
-      }
+      })()
+      return
     }
 
     // Normal flow - load from current-book
@@ -222,14 +225,17 @@ export default function ViewerPage() {
       })
 
       setFileHandle(handle) // Store for future saves
-      setLoadedFromCache(false) // Clear cache indicator once we have a file handle
+
+      // Store in IndexedDB for recent books
+      const file = await handle.getFile()
+      await storeFileHandle(bookToSave.id, handle, file.name)
 
       const content = generateBkContent(bookToSave)
       const writable = await handle.createWritable()
       await writable.write(content)
       await writable.close()
 
-      console.log('Book saved successfully')
+      console.log('Book saved successfully and handle stored')
     } catch (error: any) {
       if (error.name === 'AbortError') return // User cancelled
       console.error('Failed to save book:', error)
@@ -238,18 +244,6 @@ export default function ViewerPage() {
   }
 
   const saveBookToFile = async (bookToSave: Book) => {
-    // FIRST: Always cache the book content for recent books
-    try {
-      localStorage.setItem(`book-content-${bookToSave.id}`, JSON.stringify(bookToSave))
-      localStorage.setItem(`book-position-${bookToSave.id}`, '0') // Marker key for recent books
-      localStorage.setItem(`book-title-${bookToSave.id}`, bookToSave.title)
-      localStorage.setItem(`book-last-opened-${bookToSave.id}`, Date.now().toString())
-      console.log('Cached book content for recent books')
-    } catch (err) {
-      console.error('Failed to cache book content:', err)
-      // Continue with save even if caching fails
-    }
-
     // If File System Access API not supported, fall back to download
     if (!('showSaveFilePicker' in window)) {
       // Fallback: trigger download
@@ -567,27 +561,6 @@ export default function ViewerPage() {
         position: 'relative',
       }}
     >
-      {/* Visual indicator for cached books */}
-      {loadedFromCache && !fileHandle && (
-        <div
-          style={{
-            position: 'fixed',
-            top: '10px',
-            right: '10px',
-            padding: '8px 12px',
-            background: 'rgba(255, 165, 0, 0.1)',
-            border: '1px solid rgba(255, 165, 0, 0.3)',
-            borderRadius: '4px',
-            fontSize: '12px',
-            color: 'rgba(0, 0, 0, 0.6)',
-            fontFamily: 'Inter, system-ui, sans-serif',
-            zIndex: 100,
-          }}
-        >
-          Loaded from cache - save to enable auto-save
-        </div>
-      )}
-
       {/* Home button in bottom-left */}
       <div style={{ position: 'absolute', bottom: '24px', left: '24px', zIndex: 20 }}>
         <button
