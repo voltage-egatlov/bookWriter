@@ -61,9 +61,15 @@ impl BkParser {
         self.line_number += 1;
         let trimmed = line.trim();
 
-        // Skip empty lines
+        // Skip empty lines only in metadata section
         if trimmed.is_empty() {
-            return Ok(());
+            if self.state == ParserState::ReadingMetadata {
+                return Ok(());
+            } else {
+                // Preserve empty lines in chapter content
+                self.accumulate_content(line);
+                return Ok(());
+            }
         }
 
         // Handle chapter headers
