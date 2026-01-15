@@ -1,81 +1,115 @@
 # BookWriter - Flowing Text Implementation
 
-## Current Status: Step 2 - Overflow Detection (In Progress)
+## Current Status: Planning Phase
 
-### Completed
-- ✅ **Step 1: Basic page-level editing**
-  - Changed from chapter-level to page-level editing
-  - Added `overflow: hidden` to prevent scrollbars
-  - Fixed textarea height constraints with flexbox
-  - Prevented internal textarea scrolling with `onScroll` handler
-  - Adjusted page width from 600px to 800px for better fill
+### What We Have Now
+- ✅ **Basic book viewer with chapter editing**
+  - Two-page spread layout (title, dedication, ToC, chapters)
+  - Chapter-level content editing (whole chapter in single textarea)
+  - Navigation between spreads via corner triangles
+  - Click to edit dedication and chapters
+  - Auto-save to localStorage and .bk file on blur
 
-### In Progress
-- 🔄 **Step 2: Overflow detection and cursor jump**
-  - Implemented `checkPageCapacity()` function to detect when text overflows
-  - Added first-page detection to account for chapter title space
-  - Adjusting padding calculation: currently testing 105px offset for title
-  - Issue: Line count calculation needs fine-tuning (showing 19 lines when 18 fit)
-  - Issue: Text splitting causing extra newlines on overflow
-  - Current fix: Trimming next page content and using character-based splitting
+### What Needs to Change
+The goal is to implement **page-level flowing text** similar to a word processor:
+- Text should flow between pages automatically when typing
+- Each page should have a fixed capacity based on dimensions and typography
+- Cursor should jump to next page when current page overflows
+- Deleting text should pull content back from next page
+- Navigation between pages with keyboard shortcuts
 
-### Pending
-- ⏳ Step 3: Add backward flow when deleting
-- ⏳ Step 4: Add keyboard navigation between pages
-- ⏳ Step 5: Add visual feedback for active page
-- ⏳ Step 6: Test and polish complete flow
+### Current Architecture
 
-## Known Issues
+#### Data Model (Rust)
+- `packages/core/src/models.rs`: Book and Chapter structs
+  - Book contains metadata (title, author, dedication) + Vec<Chapter>
+  - Chapter has: id, title, **content** (single string), order, timestamps
+  - Currently: Each chapter stores all its text in one `content` field
 
-### Active Issues
-1. **Line capacity calculation off by 1**: maxLines shows 19 but only 18 lines actually fit on first page
-   - Adjusted top padding from 72px to 105px
-   - Testing to verify correct line count
+#### UI (React/TypeScript)
+- `packages/web/src/pages/ViewerPage.tsx`: Main viewer component
+  - Renders spreads (2 pages at a time)
+  - Page types: Title (0), Dedication (1), ToC (2), Chapters (3+)
+  - **Current behavior**: Entire chapter content in one textarea
+  - No pagination within chapters
 
-2. **Extra newlines on overflow** (Partially fixed):
-   - Added `.trim()` to next page content
-   - Changed text splitting from line-based to character-based
-   - Still investigating edge cases
+#### File Format
+- `packages/core/src/bk_format/parser.rs`: .bk file parser
+  - Format:
+    ```
+    @id: <uuid>
+    @title: Book Title
+    @author: Author Name
+    @dedication: Optional dedication
 
-### Fixed Issues
-- ✅ Text shifting down when typing (fixed with flex layout and scroll lock)
-- ✅ Page width too narrow (increased from 600px to 800px)
-- ✅ Scrollbar appearing (added `overflow: hidden`)
+    #chapter: Chapter Title
+    Chapter content here...
 
-## Technical Details
+    #chapter: Another Chapter
+    More content...
+    ```
+  - Parser accumulates all lines after `#chapter:` into `chapter.content`
 
-### Key Files Modified
-- `packages/web/src/pages/ViewerPage.tsx` - Main editing logic
-- `packages/web/src/lib/pageCapacity.ts` - Overflow detection
-- `packages/web/src/lib/paginate.ts` - Text pagination engine
-- `packages/core/src/models.rs` - Changed from blocks to content model
-- `packages/core/src/bk_format/parser.rs` - Updated to join blocks into content
+### Implementation Plan
 
-### Page Configuration
-```typescript
-DEFAULT_PAGE_CONFIG = {
-  pageWidth: 800px,
-  pageHeight: 800px,
-  fontSize: 18px,
-  lineHeight: 1.8,
-  padding: { top: 60, right: 60, bottom: 40, left: 60 }
-}
+We need to decide between two approaches:
 
-First page adjustment:
-  top: 165px (60 + 105 for chapter title)
-```
+#### Option A: Keep Chapter Model, Add Runtime Pagination
+- **Data model**: No changes to Rust models (chapters still have single `content` field)
+- **File format**: No changes to .bk format
+- **UI changes**:
+  - Add `paginate.ts` to split chapter content into pages at render time
+  - Add `pageCapacity.ts` to calculate how much text fits per page
+  - Change from rendering one chapter per page to multiple pages per chapter
+  - Implement page-level editing with overflow detection
+  - Handle backward flow when deleting
 
-### Overflow Logic
-1. On each keystroke, check if content fits using `checkPageCapacity()`
-2. If overflow detected:
-   - Split text at word boundary
-   - Keep fitting content on current page
-   - Move overflow to next page
-   - Auto-switch focus to next page
-   - Navigate to correct spread if needed
+**Pros**: Simpler data model, easier to maintain .bk files
+**Cons**: More complex UI logic, need to recalculate pagination frequently
 
-## Next Steps
-1. Verify line count is correct (should show 18 for first page)
-2. Test overflow behavior with correct line count
-3. Debug any remaining newline issues
-4. Move to Step 3: backward flow deletion
+#### Option B: Store Pages in Data Model
+- **Data model**: Change Chapter to store `Vec<Page>` instead of single `content`
+- **File format**: Either keep .bk format and split on load, or extend format
+- **UI changes**: Simpler - just render pages directly and edit them
+
+**Pros**: Simpler UI rendering
+**Cons**: More complex data model, harder to edit raw .bk files
+
+### Next Steps
+1. Decide on architecture approach (A vs B)
+2. Design page configuration (dimensions, padding, typography)
+3. Implement pagination logic or data model changes
+4. Build overflow detection
+5. Implement forward flow (text moves to next page)
+6. Implement backward flow (text pulls from next page)
+7. Add keyboard navigation
+8. Test and polish
+
+## Technical Notes
+
+### Current Page Sizing
+From ViewerPage.tsx:
+- Page dimensions: 40vw × 90vh
+- Padding: 50px (all sides)
+- Font: 'Libre Baskerville, Georgia, serif'
+- Chapter content: 14px, line-height 1.6
+- Chapter title: 20px, 24px margin-bottom
+
+### Files to Modify/Create
+
+**If going with Option A (Runtime Pagination)**:
+- Create: `packages/web/src/lib/paginate.ts` - pagination algorithm
+- Create: `packages/web/src/lib/pageCapacity.ts` - capacity calculation
+- Modify: `packages/web/src/pages/ViewerPage.tsx` - page-level editing logic
+
+**If going with Option B (Data Model)**:
+- Modify: `packages/core/src/models.rs` - add Page struct
+- Modify: `packages/core/src/bk_format/parser.rs` - split into pages on load
+- Modify: `packages/web/src/pages/ViewerPage.tsx` - render pages directly
+
+## Questions to Resolve
+1. Which architecture approach should we use?
+2. Should pages have fixed pixel dimensions or viewport-relative?
+3. How to handle chapter titles across the flowing text?
+4. Should keyboard navigation be arrow keys, Page Up/Down, or both?
+5. How to visually indicate which page is active during editing?

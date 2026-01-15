@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { Book } from '@/lib/types'
 
 export default function ViewerPage() {
@@ -9,9 +9,16 @@ export default function ViewerPage() {
   const [dedicationText, setDedicationText] = useState('')
   const [editingChapter, setEditingChapter] = useState<string | null>(null)
   const [chapterTexts, setChapterTexts] = useState<Map<string, string>>(new Map())
+  const [fileHandle, setFileHandle] = useState<FileSystemFileHandle | null>(null)
   const navigate = useNavigate()
+  const location = useLocation()
 
   useEffect(() => {
+    // Get file handle from navigation state
+    if (location.state?.fileHandle) {
+      setFileHandle(location.state.fileHandle)
+    }
+
     // Load book from localStorage
     const currentBook = localStorage.getItem('current-book')
     if (currentBook) {
@@ -37,7 +44,23 @@ export default function ViewerPage() {
     } else {
       navigate('/')
     }
-  }, [navigate])
+  }, [navigate, location])
+
+  // Keyboard shortcut for manual save (Ctrl+S / Cmd+S)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+S or Cmd+S
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault()
+        if (book) {
+          saveBookToFile(book)
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [book, fileHandle])
 
   if (!book) {
     return null
@@ -124,8 +147,8 @@ export default function ViewerPage() {
     setChapterTexts(new Map(chapterTexts.set(chapterId, text)))
   }
 
-  const saveBookToFile = (bookToSave: Book) => {
-    // Generate .bk file content
+  // Helper function to generate .bk file content
+  const generateBkContent = (bookToSave: Book): string => {
     let content = `@id: ${bookToSave.id}\n`
     content += `@title: ${bookToSave.title}\n`
     content += `@author: ${bookToSave.author}\n`
@@ -140,16 +163,79 @@ export default function ViewerPage() {
       content += `${chapter.content}\n\n`
     })
 
-    // Trigger download
-    const blob = new Blob([content], { type: 'text/plain' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${bookToSave.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.bk`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
+    return content
+  }
+
+  // Helper for "Save As" or new books without file handle
+  const saveBookAs = async (bookToSave: Book) => {
+    try {
+      const handle = await window.showSaveFilePicker({
+        types: [
+          {
+            description: 'Book Files',
+            accept: { 'text/plain': ['.bk'] },
+          },
+        ],
+        suggestedName: `${bookToSave.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.bk`,
+      })
+
+      setFileHandle(handle) // Store for future saves
+
+      const content = generateBkContent(bookToSave)
+      const writable = await handle.createWritable()
+      await writable.write(content)
+      await writable.close()
+
+      console.log('Book saved successfully')
+    } catch (error: any) {
+      if (error.name === 'AbortError') return // User cancelled
+      console.error('Failed to save book:', error)
+      alert(`Failed to save: ${error.message || 'Unknown error'}`)
+    }
+  }
+
+  const saveBookToFile = async (bookToSave: Book) => {
+    // If File System Access API not supported, fall back to download
+    if (!('showSaveFilePicker' in window)) {
+      // Fallback: trigger download
+      const content = generateBkContent(bookToSave)
+      const blob = new Blob([content], { type: 'text/plain' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${bookToSave.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.bk`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      return
+    }
+
+    // If no file handle available (new book), trigger "Save As"
+    if (!fileHandle) {
+      console.log('No file handle available, triggering Save As')
+      await saveBookAs(bookToSave)
+      return
+    }
+
+    // Save to existing file handle (seamless, no dialog!)
+    try {
+      const content = generateBkContent(bookToSave)
+
+      // Create writable stream to file
+      const writable = await fileHandle.createWritable()
+
+      // Write content to file
+      await writable.write(content)
+
+      // Close the file and commit changes
+      await writable.close()
+
+      console.log('Book saved successfully')
+    } catch (error: any) {
+      console.error('Failed to save book:', error)
+      alert(`Failed to save: ${error.message || 'Unknown error'}`)
+    }
   }
 
   // Get left and right page numbers for current spread

@@ -75,10 +75,52 @@ export default function HomePage() {
     return new Date(timestamp).toLocaleDateString()
   }
 
-  const handleOpenBook = () => {
-    console.log('Open Book clicked')
-    console.log('File input ref:', fileInputRef.current)
-    fileInputRef.current?.click()
+  const handleOpenBook = async () => {
+    // Check if File System Access API is supported
+    if (!('showOpenFilePicker' in window)) {
+      // Fallback to file input for unsupported browsers
+      console.log('File System Access API not supported, using fallback')
+      fileInputRef.current?.click()
+      return
+    }
+
+    try {
+      setIsLoading(true)
+
+      // Show file picker (one-time permission dialog)
+      const [fileHandle] = await window.showOpenFilePicker({
+        types: [
+          {
+            description: 'Book Files',
+            accept: { 'text/plain': ['.bk'] },
+          },
+        ],
+        multiple: false,
+      })
+
+      // Read file content
+      const file = await fileHandle.getFile()
+      const content = await file.text()
+
+      // Parse book
+      const book = await parseBk(content)
+
+      // Store book data in localStorage
+      localStorage.setItem('current-book', JSON.stringify(book))
+      localStorage.setItem('current-book-filename', file.name)
+
+      // Navigate to viewer with file handle
+      navigate('/viewer', { state: { fileHandle } })
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        // User cancelled - no error
+        return
+      }
+      console.error('Failed to open file:', err)
+      alert(`Failed to open book: ${err.message || 'Unknown error'}`)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const handleNewBook = () => {
