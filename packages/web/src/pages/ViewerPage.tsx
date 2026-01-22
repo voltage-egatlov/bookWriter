@@ -1,19 +1,21 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback, useRef, type CSSProperties } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Book } from '@/lib/types'
 import { getFileHandle, storeFileHandle } from '@/lib/fileHandleDB'
 import { parseBk } from '@/lib/wasm'
+import { BookEditor } from '@/components/editor/BookEditor'
+import { SAVE_DEBOUNCE_MS } from '@/lib/editor/constants'
 
 export default function ViewerPage() {
   const [book, setBook] = useState<Book | null>(null)
-  const [currentSpread, setCurrentSpread] = useState(0)
-  const [editingDedication, setEditingDedication] = useState(false)
-  const [dedicationText, setDedicationText] = useState('')
-  const [editingChapter, setEditingChapter] = useState<string | null>(null)
-  const [chapterTexts, setChapterTexts] = useState<Map<string, string>>(new Map())
   const [fileHandle, setFileHandle] = useState<FileSystemFileHandle | null>(null)
+  const [showInfoModal, setShowInfoModal] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
+
+  // Debounced save ref
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const pendingBookRef = useRef<Book | null>(null)
 
   useEffect(() => {
     // Get file handle from navigation state
@@ -40,12 +42,6 @@ export default function ViewerPage() {
             const parsedBook = await parseBk(content)
 
             setBook(parsedBook)
-            setDedicationText(parsedBook.dedication || 'This book is dedicated to...')
-
-            const texts = new Map<string, string>()
-            parsedBook.chapters.forEach((ch) => texts.set(ch.id, ch.content))
-            setChapterTexts(texts)
-
             localStorage.setItem(`book-last-opened-${bookId}`, Date.now().toString())
             localStorage.setItem('current-book', JSON.stringify(parsedBook))
 
@@ -70,14 +66,6 @@ export default function ViewerPage() {
       try {
         const parsedBook = JSON.parse(currentBook) as Book
         setBook(parsedBook)
-        setDedicationText(parsedBook.dedication || 'This book is dedicated to...')
-
-        // Initialize chapter texts
-        const texts = new Map<string, string>()
-        parsedBook.chapters.forEach((chapter) => {
-          texts.set(chapter.id, chapter.content)
-        })
-        setChapterTexts(texts)
 
         // Update last opened timestamp
         localStorage.setItem(`book-title-${parsedBook.id}`, parsedBook.title)
@@ -91,109 +79,8 @@ export default function ViewerPage() {
     }
   }, [navigate, location])
 
-  // Keyboard shortcut for manual save (Ctrl+S / Cmd+S)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl+S or Cmd+S
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault()
-        if (book) {
-          saveBookToFile(book)
-        }
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [book, fileHandle])
-
-  if (!book) {
-    return null
-  }
-
-  const saveActiveEdits = () => {
-    if (!book) return
-
-    let updatedBook = { ...book }
-    let hasChanges = false
-
-    // Save dedication if editing
-    if (editingDedication) {
-      updatedBook.dedication = dedicationText
-      hasChanges = true
-      setEditingDedication(false)
-    }
-
-    // Save chapter if editing
-    if (editingChapter) {
-      updatedBook.chapters = updatedBook.chapters.map((chapter) =>
-        chapter.id === editingChapter
-          ? { ...chapter, content: chapterTexts.get(editingChapter) || '' }
-          : chapter
-      )
-      hasChanges = true
-      setEditingChapter(null)
-    }
-
-    if (hasChanges) {
-      setBook(updatedBook)
-      localStorage.setItem('current-book', JSON.stringify(updatedBook))
-      saveBookToFile(updatedBook)
-    }
-  }
-
-  const handlePreviousSpread = () => {
-    if (currentSpread > 0) {
-      saveActiveEdits()
-      setCurrentSpread(currentSpread - 1)
-    }
-  }
-
-  const handleNextSpread = () => {
-    // Calculate total number of spreads
-    // Spread 0: title + dedication
-    // Spread 1: ToC + first chapter
-    // Spread 2+: chapters paired
-    const totalPages = 3 + book.chapters.length // title, dedication, ToC, then chapters
-    const maxSpread = Math.ceil(totalPages / 2) - 1
-
-    if (currentSpread < maxSpread) {
-      saveActiveEdits()
-      setCurrentSpread(currentSpread + 1)
-    }
-  }
-
-  const handleDedicationBlur = () => {
-    setEditingDedication(false)
-    if (book) {
-      const updatedBook = { ...book, dedication: dedicationText }
-      setBook(updatedBook)
-      localStorage.setItem('current-book', JSON.stringify(updatedBook))
-      saveBookToFile(updatedBook)
-    }
-  }
-
-  const handleChapterBlur = (chapterId: string) => {
-    setEditingChapter(null)
-    if (book) {
-      const updatedBook = { ...book }
-      updatedBook.chapters = updatedBook.chapters.map((chapter) =>
-        chapter.id === chapterId
-          ? { ...chapter, content: chapterTexts.get(chapterId) || '' }
-          : chapter
-      )
-      setBook(updatedBook)
-      localStorage.setItem('current-book', JSON.stringify(updatedBook))
-      saveBookToFile(updatedBook)
-    }
-  }
-
-  const handleChapterTextChange = (chapterId: string, text: string) => {
-    setChapterTexts(new Map(chapterTexts.set(chapterId, text)))
-  }
-
   // Helper function to generate .bk file content
-  const generateBkContent = (bookToSave: Book): string => {
+  const generateBkContent = useCallback((bookToSave: Book): string => {
     let content = `@id: ${bookToSave.id}\n`
     content += `@title: ${bookToSave.title}\n`
     content += `@author: ${bookToSave.author}\n`
@@ -209,345 +96,161 @@ export default function ViewerPage() {
     })
 
     return content
-  }
+  }, [])
 
   // Helper for "Save As" or new books without file handle
-  const saveBookAs = async (bookToSave: Book) => {
-    try {
-      const handle = await window.showSaveFilePicker({
-        types: [
-          {
-            description: 'Book Files',
-            accept: { 'text/plain': ['.bk'] },
-          },
-        ],
-        suggestedName: `${bookToSave.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.bk`,
-      })
+  const saveBookAs = useCallback(
+    async (bookToSave: Book) => {
+      try {
+        const handle = await window.showSaveFilePicker({
+          types: [
+            {
+              description: 'Book Files',
+              accept: { 'text/plain': ['.bk'] },
+            },
+          ],
+          suggestedName: `${bookToSave.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.bk`,
+        })
 
-      setFileHandle(handle) // Store for future saves
+        setFileHandle(handle) // Store for future saves
 
-      // Store in IndexedDB for recent books
-      const file = await handle.getFile()
-      await storeFileHandle(bookToSave.id, handle, file.name)
+        // Store in IndexedDB for recent books
+        const file = await handle.getFile()
+        await storeFileHandle(bookToSave.id, handle, file.name)
 
-      const content = generateBkContent(bookToSave)
-      const writable = await handle.createWritable()
-      await writable.write(content)
-      await writable.close()
+        const content = generateBkContent(bookToSave)
+        const writable = await handle.createWritable()
+        await writable.write(content)
+        await writable.close()
 
-      console.log('Book saved successfully and handle stored')
-    } catch (error: any) {
-      if (error.name === 'AbortError') return // User cancelled
-      console.error('Failed to save book:', error)
-      alert(`Failed to save: ${error.message || 'Unknown error'}`)
-    }
-  }
+        console.log('Book saved successfully and handle stored')
+      } catch (error: any) {
+        if (error.name === 'AbortError') return // User cancelled
+        console.error('Failed to save book:', error)
+        alert(`Failed to save: ${error.message || 'Unknown error'}`)
+      }
+    },
+    [generateBkContent]
+  )
 
-  const saveBookToFile = async (bookToSave: Book) => {
-    // If File System Access API not supported, fall back to download
-    if (!('showSaveFilePicker' in window)) {
-      // Fallback: trigger download
-      const content = generateBkContent(bookToSave)
-      const blob = new Blob([content], { type: 'text/plain' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${bookToSave.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.bk`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-      return
-    }
-
-    // If no file handle available (new book), trigger "Save As"
-    if (!fileHandle) {
-      console.log('No file handle available, triggering Save As')
-      await saveBookAs(bookToSave)
-      return
-    }
-
-    // Save to existing file handle (seamless, no dialog!)
-    try {
-      const content = generateBkContent(bookToSave)
-
-      // Create writable stream to file
-      const writable = await fileHandle.createWritable()
-
-      // Write content to file
-      await writable.write(content)
-
-      // Close the file and commit changes
-      await writable.close()
-
-      console.log('Book saved successfully')
-    } catch (error: any) {
-      console.error('Failed to save book:', error)
-      alert(`Failed to save: ${error.message || 'Unknown error'}`)
-    }
-  }
-
-  // Get left and right page numbers for current spread
-  const getLeftPageNumber = () => currentSpread * 2
-  const getRightPageNumber = () => currentSpread * 2 + 1
-
-  // Helper to render page content based on page number
-  const renderPageContent = (pageNumber: number) => {
-    // Page 0: Title page
-    if (pageNumber === 0) {
-      return (
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            height: '100%',
-          }}
-        >
-          <h1
-            style={{
-              fontFamily: 'Libre Baskerville, Georgia, serif',
-              fontSize: '32px',
-              fontWeight: 'bold',
-              marginBottom: '16px',
-              textAlign: 'center',
-            }}
-          >
-            {book.title}
-          </h1>
-          <p
-            style={{
-              fontFamily: 'Libre Baskerville, Georgia, serif',
-              fontSize: '16px',
-              color: 'rgba(0,0,0,0.6)',
-            }}
-          >
-            {book.author}
-          </p>
-        </div>
-      )
-    }
-
-    // Page 1: Dedication page
-    if (pageNumber === 1) {
-      return (
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'center',
-            height: '100%',
-          }}
-        >
-          {editingDedication ? (
-            <textarea
-              value={dedicationText}
-              onChange={(e) => setDedicationText(e.target.value)}
-              onBlur={handleDedicationBlur}
-              autoFocus
-              style={{
-                fontFamily: 'Libre Baskerville, Georgia, serif',
-                fontSize: '14px',
-                fontStyle: 'italic',
-                lineHeight: '1.6',
-                color: 'rgba(0,0,0,0.6)',
-                textAlign: 'center',
-                border: 'none',
-                outline: 'none',
-                resize: 'none',
-                background: 'transparent',
-                width: '100%',
-                minHeight: '100px',
-                padding: 0,
-                margin: 0,
-                cursor: 'text',
-              }}
-            />
-          ) : (
-            <p
-              onClick={() => setEditingDedication(true)}
-              style={{
-                fontFamily: 'Libre Baskerville, Georgia, serif',
-                fontSize: '14px',
-                fontStyle: 'italic',
-                lineHeight: '1.6',
-                color: 'rgba(0,0,0,0.6)',
-                textAlign: 'center',
-                cursor: 'text',
-              }}
-            >
-              {dedicationText}
-            </p>
-          )}
-        </div>
-      )
-    }
-
-    // Page 2: Table of Contents
-    if (pageNumber === 2) {
-      return (
-        <div>
-          <h2
-            style={{
-              fontFamily: 'Libre Baskerville, Georgia, serif',
-              fontSize: '24px',
-              fontWeight: 'bold',
-              marginBottom: '32px',
-              textAlign: 'center',
-            }}
-          >
-            Contents
-          </h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {book.chapters.map((chapter, index) => {
-              // Calculate which spread this chapter will be on
-              const chapterPageNumber = 3 + index
-              const chapterSpread = Math.floor(chapterPageNumber / 2)
-
-              return (
-                <button
-                  key={chapter.id}
-                  onClick={() => {
-                    saveActiveEdits()
-                    setCurrentSpread(chapterSpread)
-                  }}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                    padding: '6px 0',
-                    fontFamily: 'Libre Baskerville, Georgia, serif',
-                    fontSize: '14px',
-                    color: 'rgba(0,0,0,0.7)',
-                    transition: 'color 0.2s',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.color = 'rgba(0,0,0,1)'
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.color = 'rgba(0,0,0,0.7)'
-                  }}
-                >
-                  {chapter.title}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      )
-    }
-
-    // Page 3+: Chapter content
-    const chapterIndex = pageNumber - 3
-    if (chapterIndex >= 0 && chapterIndex < book.chapters.length) {
-      const chapter = book.chapters[chapterIndex]
-      const isEditing = editingChapter === chapter.id
-      const chapterText = chapterTexts.get(chapter.id) || ''
-
-      if (isEditing) {
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-            <h2
-              style={{
-                fontFamily: 'Libre Baskerville, Georgia, serif',
-                fontSize: '20px',
-                fontWeight: 'bold',
-                marginBottom: '24px',
-                textAlign: 'center',
-                color: 'rgba(0,0,0,0.85)',
-              }}
-            >
-              {chapter.title}
-            </h2>
-            <textarea
-              value={chapterText}
-              onChange={(e) => handleChapterTextChange(chapter.id, e.target.value)}
-              onBlur={() => handleChapterBlur(chapter.id)}
-              autoFocus
-              style={{
-                fontFamily: 'Libre Baskerville, Georgia, serif',
-                fontSize: '14px',
-                lineHeight: '1.6',
-                color: 'rgba(0,0,0,0.85)',
-                border: 'none',
-                outline: 'none',
-                resize: 'none',
-                background: 'transparent',
-                width: '100%',
-                flex: 1,
-                padding: 0,
-                margin: 0,
-                cursor: 'text',
-              }}
-            />
-          </div>
-        )
+  const saveBookToFile = useCallback(
+    async (bookToSave: Book, currentFileHandle: FileSystemFileHandle | null) => {
+      // If File System Access API not supported, fall back to download
+      if (!('showSaveFilePicker' in window)) {
+        // Fallback: trigger download
+        const content = generateBkContent(bookToSave)
+        const blob = new Blob([content], { type: 'text/plain' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `${bookToSave.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.bk`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+        return
       }
 
-      return (
-        <>
-          <h2
-            style={{
-              fontFamily: 'Libre Baskerville, Georgia, serif',
-              fontSize: '20px',
-              fontWeight: 'bold',
-              marginBottom: '24px',
-              textAlign: 'center',
-              color: 'rgba(0,0,0,0.85)',
-            }}
-          >
-            {chapter.title}
-          </h2>
-          <div
-            onClick={() => setEditingChapter(chapter.id)}
-            style={{
-              cursor: 'text',
-              fontFamily: 'Libre Baskerville, Georgia, serif',
-              fontSize: '14px',
-              lineHeight: '1.6',
-              color: 'rgba(0,0,0,0.85)',
-              whiteSpace: 'pre-wrap',
-            }}
-          >
-            {chapterText}
-          </div>
-        </>
-      )
-    }
+      // If no file handle available (new book), trigger "Save As"
+      if (!currentFileHandle) {
+        console.log('No file handle available, triggering Save As')
+        await saveBookAs(bookToSave)
+        return
+      }
 
+      // Save to existing file handle (seamless, no dialog!)
+      try {
+        const content = generateBkContent(bookToSave)
+
+        // Create writable stream to file
+        const writable = await currentFileHandle.createWritable()
+
+        // Write content to file
+        await writable.write(content)
+
+        // Close the file and commit changes
+        await writable.close()
+
+        console.log('Book saved successfully')
+      } catch (error: any) {
+        console.error('Failed to save book:', error)
+        alert(`Failed to save: ${error.message || 'Unknown error'}`)
+      }
+    },
+    [generateBkContent, saveBookAs]
+  )
+
+  // Debounced save function
+  const debouncedSave = useCallback(
+    (bookToSave: Book) => {
+      pendingBookRef.current = bookToSave
+
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current)
+      }
+
+      saveTimeoutRef.current = setTimeout(() => {
+        if (pendingBookRef.current) {
+          saveBookToFile(pendingBookRef.current, fileHandle)
+          pendingBookRef.current = null
+        }
+      }, SAVE_DEBOUNCE_MS)
+    },
+    [fileHandle, saveBookToFile]
+  )
+
+  // Handle book changes from editor
+  const handleBookChange = useCallback(
+    (updatedBook: Book) => {
+      setBook(updatedBook)
+      localStorage.setItem('current-book', JSON.stringify(updatedBook))
+      localStorage.setItem(`book-title-${updatedBook.id}`, updatedBook.title)
+      debouncedSave(updatedBook)
+    },
+    [debouncedSave]
+  )
+
+  // Handle manual save
+  const handleSave = useCallback(() => {
+    if (book) {
+      // Cancel debounced save and save immediately
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current)
+        saveTimeoutRef.current = null
+      }
+      pendingBookRef.current = null
+      saveBookToFile(book, fileHandle)
+    }
+  }, [book, fileHandle, saveBookToFile])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current)
+      }
+      // Save any pending changes
+      if (pendingBookRef.current) {
+        // Note: This won't work reliably on unmount, but it's a best effort
+        localStorage.setItem('current-book', JSON.stringify(pendingBookRef.current))
+      }
+    }
+  }, [])
+
+  if (!book) {
     return null
   }
 
-  // Triangle styles
-  const cornerTriangleStyle = {
-    position: 'absolute' as const,
-    width: 0,
-    height: 0,
+  const navButtonStyle: CSSProperties = {
+    background: 'none',
+    border: 'none',
+    fontSize: '12px',
+    fontFamily: 'Libre Baskerville, Georgia, serif',
     cursor: 'pointer',
-    transition: 'border-color 0.2s ease',
-    zIndex: 10,
+    color: 'rgba(0, 0, 0, 0.5)',
+    transition: 'color 0.2s',
+    padding: '2px 4px',
   }
-
-  const topLeftTriangleStyle = {
-    ...cornerTriangleStyle,
-    top: 0,
-    left: 0,
-    borderTop: '60px solid rgba(0,0,0,0.08)',
-    borderRight: '60px solid transparent',
-  }
-
-  const topRightTriangleStyle = {
-    ...cornerTriangleStyle,
-    top: 0,
-    right: 0,
-    borderTop: '60px solid rgba(0,0,0,0.08)',
-    borderLeft: '60px solid transparent',
-  }
-
-  const leftPageNumber = getLeftPageNumber()
-  const rightPageNumber = getRightPageNumber()
 
   return (
     <div
@@ -556,113 +259,187 @@ export default function ViewerPage() {
         height: '100vh',
         backgroundColor: '#F5EFE7',
         display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        position: 'relative',
+        flexDirection: 'column',
       }}
     >
-      {/* Home button in bottom-left */}
-      <div style={{ position: 'absolute', bottom: '24px', left: '24px', zIndex: 20 }}>
-        <button
-          onClick={() => {
-            saveActiveEdits()
-            navigate('/')
-          }}
-          style={{
-            background: 'none',
-            border: 'none',
-            fontSize: '24px',
-            cursor: 'pointer',
-            padding: '8px',
-            opacity: 0.5,
-            transition: 'opacity 0.2s',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.opacity = '0.8'
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.opacity = '0.5'
-          }}
-        >
-          🏠
-        </button>
-      </div>
-
-      {/* Two-page spread */}
+      {/* Main content area */}
       <div
         style={{
+          flex: 1,
           display: 'flex',
-          gap: '10px',
-          justifyContent: 'center',
           alignItems: 'center',
-          height: '100%',
-          padding: '20px',
+          justifyContent: 'center',
+          overflow: 'hidden',
         }}
       >
-        {/* Left Page */}
-        <div
-          style={{
-            position: 'relative',
-            width: '40vw',
-            height: '90vh',
-            backgroundColor: 'white',
-            padding: '50px',
-            overflow: 'auto',
-            display: 'flex',
-            flexDirection: 'column',
-          }}
-        >
-          {/* Top-left corner triangle for previous spread */}
-          {currentSpread > 0 && (
-            <div
-              onClick={(e) => {
-                e.stopPropagation()
-                handlePreviousSpread()
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderTopColor = 'rgba(0,0,0,0.25)'
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderTopColor = 'rgba(0,0,0,0.08)'
-              }}
-              style={topLeftTriangleStyle}
-            />
-          )}
-          {renderPageContent(leftPageNumber)}
-        </div>
-
-        {/* Right Page */}
-        <div
-          style={{
-            position: 'relative',
-            width: '40vw',
-            height: '90vh',
-            backgroundColor: 'white',
-            padding: '50px',
-            overflow: 'auto',
-            display: 'flex',
-            flexDirection: 'column',
-          }}
-        >
-          {/* Top-right corner triangle for next spread */}
-          {currentSpread < Math.ceil((3 + book.chapters.length) / 2) - 1 && (
-            <div
-              onClick={(e) => {
-                e.stopPropagation()
-                handleNextSpread()
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderTopColor = 'rgba(0,0,0,0.25)'
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderTopColor = 'rgba(0,0,0,0.08)'
-              }}
-              style={topRightTriangleStyle}
-            />
-          )}
-          {renderPageContent(rightPageNumber)}
-        </div>
+        <BookEditor
+          book={book}
+          fileHandle={fileHandle}
+          onBookChange={handleBookChange}
+          onSave={handleSave}
+        />
       </div>
+
+      {/* Minimal nav bar */}
+      <nav
+        style={{
+          display: 'flex',
+          gap: '16px',
+          padding: '6px 16px',
+          backgroundColor: 'rgba(255, 255, 255, 0.95)',
+          borderTop: '1px solid rgba(0, 0, 0, 0.1)',
+        }}
+      >
+        <button
+          onClick={() => {
+            if (pendingBookRef.current) {
+              saveBookToFile(pendingBookRef.current, fileHandle)
+            }
+            navigate('/')
+          }}
+          style={navButtonStyle}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = 'rgba(0, 0, 0, 0.8)'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = 'rgba(0, 0, 0, 0.5)'
+          }}
+        >
+          Home
+        </button>
+        <button
+          onClick={() => setShowInfoModal(true)}
+          style={navButtonStyle}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = 'rgba(0, 0, 0, 0.8)'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = 'rgba(0, 0, 0, 0.5)'
+          }}
+        >
+          Info
+        </button>
+      </nav>
+
+      {/* Info Modal */}
+      {showInfoModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 100,
+          }}
+          onClick={() => setShowInfoModal(false)}
+        >
+          <div
+            style={{
+              backgroundColor: 'white',
+              borderRadius: '12px',
+              padding: '32px',
+              maxWidth: '500px',
+              width: '90%',
+              maxHeight: '80vh',
+              overflow: 'auto',
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
+              fontFamily: 'Libre Baskerville, Georgia, serif',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 style={{ marginTop: 0, marginBottom: '20px', fontSize: '24px' }}>
+              How to Use Katha
+            </h2>
+
+            <section style={{ marginBottom: '20px' }}>
+              <h3 style={{ fontSize: '16px', marginBottom: '8px', color: 'rgba(0,0,0,0.7)' }}>
+                Editing
+              </h3>
+              <p style={{ fontSize: '14px', lineHeight: 1.6, margin: 0, color: 'rgba(0,0,0,0.6)' }}>
+                Click anywhere on the page to place your cursor and start typing. Text flows
+                naturally across pages like a real book.
+              </p>
+            </section>
+
+            <section style={{ marginBottom: '20px' }}>
+              <h3 style={{ fontSize: '16px', marginBottom: '8px', color: 'rgba(0,0,0,0.7)' }}>
+                Keyboard Shortcuts
+              </h3>
+              <ul
+                style={{
+                  fontSize: '14px',
+                  lineHeight: 1.8,
+                  margin: 0,
+                  paddingLeft: '20px',
+                  color: 'rgba(0,0,0,0.6)',
+                }}
+              >
+                <li>
+                  <strong>Ctrl/Cmd + S</strong> - Save
+                </li>
+                <li>
+                  <strong>Ctrl/Cmd + B</strong> - Bold
+                </li>
+                <li>
+                  <strong>Ctrl/Cmd + I</strong> - Italic
+                </li>
+                <li>
+                  <strong>Ctrl/Cmd + U</strong> - Underline
+                </li>
+                <li>
+                  <strong>Ctrl/Cmd + Shift + C</strong> - Create new chapter at cursor
+                </li>
+                <li>
+                  <strong>Escape</strong> - Hide cursor
+                </li>
+              </ul>
+            </section>
+
+            <section style={{ marginBottom: '20px' }}>
+              <h3 style={{ fontSize: '16px', marginBottom: '8px', color: 'rgba(0,0,0,0.7)' }}>
+                Chapters
+              </h3>
+              <p style={{ fontSize: '14px', lineHeight: 1.6, margin: 0, color: 'rgba(0,0,0,0.6)' }}>
+                To create a new chapter, press <strong>Ctrl/Cmd + Shift + C</strong> while editing.
+                Text after your cursor becomes the new chapter.
+                <br />
+                <br />
+                To delete a chapter, delete its entire title. The content will merge into the
+                previous chapter.
+              </p>
+            </section>
+
+            <section style={{ marginBottom: '24px' }}>
+              <h3 style={{ fontSize: '16px', marginBottom: '8px', color: 'rgba(0,0,0,0.7)' }}>
+                Navigation
+              </h3>
+              <p style={{ fontSize: '14px', lineHeight: 1.6, margin: 0, color: 'rgba(0,0,0,0.6)' }}>
+                Click the arrows at the top corners of pages to navigate between spreads. Click the
+                book title (top right) to jump to the Table of Contents. Click any chapter in the
+                TOC to jump directly to it.
+              </p>
+            </section>
+
+            <button
+              onClick={() => setShowInfoModal(false)}
+              style={{
+                width: '100%',
+                padding: '12px',
+                backgroundColor: '#F5EFE7',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '14px',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

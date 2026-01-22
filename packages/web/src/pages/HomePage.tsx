@@ -420,7 +420,7 @@ Start typing and your story will flow naturally across pages.
           className="text-black/40 font-light"
           style={{ fontFamily: 'Inter, system-ui, sans-serif', fontSize: '14px' }}
         >
-          v0.1.0
+          v1.0.0
         </span>
       </div>
 
