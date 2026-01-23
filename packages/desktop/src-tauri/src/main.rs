@@ -5,37 +5,35 @@ use std::path::Path;
 
 #[tauri::command]
 async fn open_file_dialog() -> Result<Option<String>, String> {
-    use tauri::api::dialog::blocking::FileDialogBuilder;
-
-    let path = FileDialogBuilder::new()
+    let result = rfd::AsyncFileDialog::new()
         .add_filter("Book Files", &["bk"])
         .add_filter("All Files", &["*"])
-        .pick_file();
+        .pick_file()
+        .await;
 
-    Ok(path.map(|p| p.to_string_lossy().to_string()))
+    Ok(result.map(|f| f.path().to_string_lossy().to_string()))
 }
 
 #[tauri::command]
 async fn save_file_dialog(default_name: String) -> Result<Option<String>, String> {
-    use tauri::api::dialog::blocking::FileDialogBuilder;
-
-    let path = FileDialogBuilder::new()
+    let result = rfd::AsyncFileDialog::new()
         .add_filter("Book Files", &["bk"])
         .set_file_name(&default_name)
-        .save_file();
+        .save_file()
+        .await;
 
-    Ok(path.map(|p| p.to_string_lossy().to_string()))
+    Ok(result.map(|f| f.path().to_string_lossy().to_string()))
 }
 
 #[tauri::command]
-async fn load_bk_file(path: String) -> Result<Book, String> {
+fn load_bk_file(path: String) -> Result<Book, String> {
     let book = BkParser::parse_file(Path::new(&path))
         .map_err(|e| format!("Parse error: {}\n\nHelp: {}", e, e.help_message()))?;
     Ok(book)
 }
 
 #[tauri::command]
-async fn save_bk_file(path: String, content: String) -> Result<(), String> {
+fn save_bk_file(path: String, content: String) -> Result<(), String> {
     std::fs::write(&path, content).map_err(|e| format!("Failed to save file: {}", e))?;
     Ok(())
 }

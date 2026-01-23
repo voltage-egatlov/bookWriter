@@ -19,8 +19,8 @@
       },
       "dialog": {
         "all": false,
-        "open": true,
-        "save": true
+        "open": false,
+        "save": false
       },
       "fs": {
         "all": false,
