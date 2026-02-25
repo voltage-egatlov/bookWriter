@@ -1,0 +1,19 @@
+{
+  "name": "bookwriter-core",
+  "type": "module",
+  "collaborators": [
+    "Your Name <your.email@example.com>"
+  ],
+  "version": "0.1.0",
+  "license": "MIT",
+  "files": [
+    "bookwriter_core_bg.wasm",
+    "bookwriter_core.js",
+    "bookwriter_core.d.ts"
+  ],
+  "main": "bookwriter_core.js",
+  "types": "bookwriter_core.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
